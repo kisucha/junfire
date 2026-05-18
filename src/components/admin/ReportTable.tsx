@@ -18,10 +18,11 @@ interface ReportTableProps {
 
 // 상태별 스타일
 const statusStyles: Record<RecordStatus, string> = {
-  WORK:   'bg-green-100 text-green-700',
-  SICK:   'bg-yellow-100 text-yellow-700',
-  ANNUAL: 'bg-blue-100 text-blue-700',
-  UNPAID: 'bg-gray-100 text-gray-600',
+  WORK:    'bg-green-100 text-green-700',
+  SICK:    'bg-red-100 text-red-700',
+  ANNUAL:  'bg-blue-100 text-blue-700',
+  UNPAID:  'bg-gray-100 text-gray-600',
+  HOLIDAY: 'bg-yellow-100 text-yellow-700',
 }
 
 /**

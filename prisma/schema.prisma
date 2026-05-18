@@ -24,6 +24,7 @@ enum RecordStatus {
   SICK    // 병가
   ANNUAL  // 연차
   UNPAID  // 무급
+  HOLIDAY // 공휴일
 }
 
 // 직원/관리자 계정 테이블

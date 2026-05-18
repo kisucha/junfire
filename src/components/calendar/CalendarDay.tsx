@@ -18,18 +18,20 @@ interface CalendarDayProps {
 
 // 업무 상태별 배경색 — RESEARCH.md 색상 기준
 const statusBgMap: Record<RecordStatus, string> = {
-  WORK:   'bg-green-500 text-white',
-  SICK:   'bg-yellow-400 text-white',
-  ANNUAL: 'bg-blue-500 text-white',
-  UNPAID: 'bg-gray-400 text-white',
+  WORK:    'bg-green-500 text-white',
+  SICK:    'bg-red-400 text-white',
+  ANNUAL:  'bg-blue-500 text-white',
+  UNPAID:  'bg-gray-400 text-white',
+  HOLIDAY: 'bg-yellow-400 text-white',
 }
 
 // 업무 상태별 한국어 레이블
 const statusLabelMap: Record<RecordStatus, string> = {
-  WORK:   '근무',
-  SICK:   '병가',
-  ANNUAL: '연차',
-  UNPAID: '무급',
+  WORK:    '근무',
+  SICK:    '병가',
+  ANNUAL:  '연차',
+  UNPAID:  '무급',
+  HOLIDAY: '공휴일',
 }
 
 /**

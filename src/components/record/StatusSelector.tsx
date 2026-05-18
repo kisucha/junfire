@@ -12,17 +12,18 @@ interface StatusSelectorProps {
 
 // 상태별 선택 시 강조 스타일
 const statusActiveStyles: Record<RecordStatus, string> = {
-  WORK:   'bg-green-100 border-green-500 text-green-800',
-  SICK:   'bg-yellow-100 border-yellow-500 text-yellow-800',
-  ANNUAL: 'bg-blue-100 border-blue-500 text-blue-800',
-  UNPAID: 'bg-gray-100 border-gray-500 text-gray-800',
+  WORK:    'bg-green-100 border-green-500 text-green-800',
+  SICK:    'bg-red-100 border-red-500 text-red-800',
+  ANNUAL:  'bg-blue-100 border-blue-500 text-blue-800',
+  UNPAID:  'bg-gray-100 border-gray-500 text-gray-800',
+  HOLIDAY: 'bg-yellow-100 border-yellow-500 text-yellow-800',
 }
 
 // 선택되지 않은 상태 기본 스타일
 const statusInactiveStyle = 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
 
 // 상태 선택 순서 정의
-const STATUS_ORDER: RecordStatus[] = ['WORK', 'SICK', 'ANNUAL', 'UNPAID']
+const STATUS_ORDER: RecordStatus[] = ['WORK', 'SICK', 'ANNUAL', 'UNPAID', 'HOLIDAY']
 
 /**
  * 업무 상태 선택 컴포넌트

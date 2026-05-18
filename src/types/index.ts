@@ -8,7 +8,7 @@
 export type Role = 'EMPLOYEE' | 'ADMIN'
 
 // 업무 기록 상태 — Prisma RecordStatus enum과 동일
-export type RecordStatus = 'WORK' | 'SICK' | 'ANNUAL' | 'UNPAID'
+export type RecordStatus = 'WORK' | 'SICK' | 'ANNUAL' | 'UNPAID' | 'HOLIDAY'
 
 // ===== 한국어 표시명 매핑 상수 =====
 
@@ -18,6 +18,7 @@ export const StatusLabel: Record<RecordStatus, string> = {
   SICK: '병가',
   ANNUAL: '연차',
   UNPAID: '무급',
+  HOLIDAY: '공휴일',
 }
 
 // Role 한국어 표시명 — PDF 생성 시 한국어 매핑 (NF-V2-004)
@@ -34,6 +35,7 @@ export const StatusColor: Record<RecordStatus, string> = {
   SICK: '#FEE2E2',    // 빨강 계열 — 병가
   ANNUAL: '#DBEAFE',  // 파랑 계열 — 연차
   UNPAID: '#F3F4F6',  // 회색 계열 — 무급
+  HOLIDAY: '#FEF3C7', // 노랑 계열 — 공휴일
 }
 
 // ===== DTO (Data Transfer Object) 타입 =====
