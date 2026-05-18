@@ -1,0 +1,114 @@
+// prisma/schema.prisma — JunFire Protection DB 스키마 정의
+// PostgreSQL 기반 3개 테이블: User, WorkRecord, Holiday
+// [M-001] @db.Date 사용 — timestamp 대신 date 타입으로 매핑하여 UTC/KST 날짜 경계 오류 방지
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// 사용자 역할 열거형 — 직원(EMPLOYEE) 또는 관리자(ADMIN)
+enum Role {
+  EMPLOYEE
+  ADMIN
+}
+
+// 업무 기록 상태 열거형
+// HOLIDAY는 전 직원 공통 적용이므로 별도 Holiday 테이블로 분리 관리
+enum RecordStatus {
+  WORK    // 정상 근무
+  SICK    // 병가
+  ANNUAL  // 연차
+  UNPAID  // 무급
+}
+
+// 직원/관리자 계정 테이블
+// isActive: 소프트 삭제 (계정 삭제 대신 비활성화 처리)
+// isFirstLogin: 최초 로그인 시 비밀번호 강제 변경 여부 플래그
+model User {
+  id            String       @id @default(cuid())
+  username      String       @unique           // 로그인 아이디 (중복 불가)
+  name          String                         // 직원 이름
+  passwordHash  String                         // bcrypt 해시 저장 (cost factor 12)
+  role          Role         @default(EMPLOYEE) // 기본값: 일반 직원
+  isActive      Boolean      @default(true)    // 소프트 삭제용 플래그 (false = 비활성화)
+  isFirstLogin  Boolean      @default(true)    // 최초 로그인 강제 변경 플래그
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  // 관계 — 해당 직원의 업무 기록 목록
+  workRecords   WorkRecord[] @relation("UserWorkRecords")
+
+  // 활성 직원 필터 쿼리 최적화 인덱스
+  @@index([isActive])
+}
+
+// 업무 기록 테이블
+// 하루 1건 제약: userId + date UNIQUE — 동일 직원 동일 날짜 중복 등록 불가
+// createdBy/updatedBy: 관리자 대리 입력 이력 추적용
+model WorkRecord {
+  id          String       @id @default(cuid())
+  userId      String                    // 기록 대상 직원 ID (User.id 참조)
+
+  // [M-001] @db.Date 필수 — PostgreSQL Date 타입으로 매핑하여 시각 정보 제거
+  // @db.Date 없으면 timestamp로 저장되어 UTC/KST 날짜 경계 오류 발생
+  // 조회 시 toISOString().slice(0,10)으로 날짜 문자열 추출
+  date        DateTime     @db.Date
+
+  status      RecordStatus              // 업무 상태 (WORK/SICK/ANNUAL/UNPAID)
+  startTime   DateTime?                 // 업무 시작 시각 (ISO 8601 UTC 저장, 표시 시 KST 변환)
+  endTime     DateTime?                 // 업무 종료 시각 (ISO 8601 UTC 저장)
+  totalHours  Float?                    // 총 근무시간 (단위: 시간, 소수점 2자리) — 서버 자동 계산
+  location    String?                   // 업무 장소 — WORK 상태 시 필수
+  description String?                   // 업무 내용 — 선택 입력
+  createdBy   String                    // 기록 생성자 ID (직원 본인 또는 관리자 대리 입력)
+  updatedBy   String?                   // 마지막 수정자 ID (관리자 대리 수정 추적용)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // 관계 — 기록 소유 직원 (User 테이블 참조)
+  user        User         @relation("UserWorkRecords", fields: [userId], references: [id])
+
+  // 하루 1건 UNIQUE 제약 (동일 직원 + 동일 날짜 중복 불가)
+  @@unique([userId, date])
+
+  // 관리자 기간 조회용 인덱스 (날짜 범위 WHERE 조건)
+  @@index([date])
+
+  // 직원별 전체 기록 조회용 인덱스
+  @@index([userId])
+
+  // 상태별 필터 조회용 인덱스
+  @@index([status])
+}
+
+// 업무 현장 테이블 — 관리자가 등록한 현장 목록 (직원 기록 시 체크박스 선택)
+// isActive: 비활성화된 현장은 직원 화면에서 숨김, 기존 기록에는 영향 없음
+model WorkLocation {
+  id        String   @id @default(cuid())
+  name      String   @unique          // 현장명 (중복 불가)
+  isActive  Boolean  @default(true)   // 소프트 비활성화
+  createdBy String                    // 등록 관리자 ID
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+// 공휴일 테이블 (전 직원 공통 적용, WorkRecord와 분리)
+// 관리자가 등록한 공휴일은 달력에서 Holiday 상태로 표시
+// WorkRecord와 별도 테이블로 분리하여 공휴일 일괄 적용/삭제 단순화
+model Holiday {
+  id         String   @id @default(cuid())
+
+  // [M-001] @db.Date 필수 — Holiday도 날짜만 저장, 시각 정보 불필요
+  date       DateTime @unique @db.Date
+
+  name       String            // 휴일명 (예: "설날", "광복절", "어린이날")
+  createdBy  String            // 등록 관리자 ID (User.id)
+  createdAt  DateTime @default(now())
+}

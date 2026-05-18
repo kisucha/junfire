@@ -1,0 +1,24 @@
+# .gitignore — JunFire Protection git 제외 목록
+
+# 환경변수 (민감 정보 — 절대 커밋 금지)
+.env
+.env.local
+.env.production
+
+# Next.js 빌드 결과물
+.next/
+out/
+
+# Node.js 의존성
+node_modules/
+
+# 운영 로그
+*.log
+logs/
+
+# PM2
+.pm2/
+
+# OS 파일
+.DS_Store
+Thumbs.db
