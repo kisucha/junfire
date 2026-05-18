@@ -69,6 +69,20 @@ export interface WorkRecordDTO {
   user?: Pick<UserDTO, 'id' | 'name' | 'username' | 'role'>  // JOIN 시 포함 (관리자 조회용)
 }
 
+// 직원별 기간 집계 DTO — 관리자 집계 테이블용
+export interface EmployeeSummaryDTO {
+  userId: string
+  name: string
+  username: string
+  workDays: number       // WORK 일수
+  sickDays: number       // SICK 일수
+  annualDays: number     // ANNUAL 일수
+  holidayDays: number    // HOLIDAY 일수
+  unpaidDays: number     // UNPAID 일수 (집계 제외)
+  workActualHours: number  // WORK 실제 입력 시간 합계
+  totalHours: number     // workActualHours + (sick+annual+holiday)×8
+}
+
 // 업무 현장 DTO — API 응답 시 사용
 export interface WorkLocationDTO {
   id: string

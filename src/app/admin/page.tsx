@@ -5,6 +5,7 @@
 import { useState } from 'react'
 import DateRangePicker from '@/components/admin/DateRangePicker'
 import ReportTable from '@/components/admin/ReportTable'
+import SummaryTable from '@/components/admin/SummaryTable'
 import LocationManager from '@/components/admin/LocationManager'
 
 // 현재 주의 월요일 ~ 일요일 날짜 반환
@@ -39,6 +40,7 @@ export default function AdminDashboardPage() {
   const [endDate, setEndDate] = useState(defaultEnd)
   const [dateError, setDateError] = useState('')
   const [searchTrigger, setSearchTrigger] = useState(0)
+  const [includeInactive, setIncludeInactive] = useState(false)
 
   // 조회 버튼 클릭 — 날짜 유효성 검증 후 검색 트리거
   function handleSearch() {
@@ -79,13 +81,40 @@ export default function AdminDashboardPage() {
           onSearch={handleSearch}
           error={dateError}
         />
+        <div className="flex items-center gap-2 mt-3">
+          <input
+            type="checkbox"
+            id="includeInactive"
+            checked={includeInactive}
+            onChange={(e) => setIncludeInactive(e.target.checked)}
+            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+          />
+          <label htmlFor="includeInactive" className="text-sm text-gray-600">
+            비활성화된 직원도 포함
+          </label>
+        </div>
       </div>
 
-      {/* 보고서 테이블 */}
+      {/* 직원별 집계 테이블 */}
       {searchTrigger > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
           <h2 className="text-sm font-semibold text-gray-700 mb-4">
-            조회 결과 ({startDate} ~ {endDate})
+            직원별 집계 ({startDate} ~ {endDate})
+          </h2>
+          <SummaryTable
+            startDate={startDate}
+            endDate={endDate}
+            includeInactive={includeInactive}
+            searchTrigger={searchTrigger}
+          />
+        </div>
+      )}
+
+      {/* 상세 기록 테이블 */}
+      {searchTrigger > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">
+            상세 기록 ({startDate} ~ {endDate})
           </h2>
           <ReportTable
             startDate={startDate}
