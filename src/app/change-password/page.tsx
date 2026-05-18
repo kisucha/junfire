@@ -2,7 +2,7 @@
 // 목적: 최초 로그인 비밀번호 강제 변경 페이지
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
@@ -34,6 +34,20 @@ export default function ChangePasswordPage() {
 
   // 저장 진행 중 여부
   const [isLoading, setIsLoading] = useState(false)
+
+  // 세션 업데이트 완료 후 리다이렉트 대기 플래그
+  const [waitingRedirect, setWaitingRedirect] = useState(false)
+
+  // session.isFirstLogin이 false로 바뀌면 이동 — updateSession 쿠키 반영 타이밍 보장
+  useEffect(() => {
+    if (waitingRedirect && session?.user.isFirstLogin === false) {
+      if (session.user.role === 'ADMIN') {
+        router.replace('/admin')
+      } else {
+        router.replace('/dashboard')
+      }
+    }
+  }, [waitingRedirect, session?.user.isFirstLogin, session?.user.role, router])
 
   // 유효성 검증
   function validate(): boolean {
@@ -85,17 +99,10 @@ export default function ChangePasswordPage() {
         return
       }
 
-      // 비밀번호 변경 성공 — 세션의 isFirstLogin 플래그 업데이트
+      // 세션 JWT 업데이트 후 useEffect에서 isFirstLogin 변화 감지 시 이동
       await updateSession({ isFirstLogin: false })
-
       showToast('비밀번호가 변경되었습니다.', 'success')
-
-      // 역할에 따라 리다이렉트
-      if (session?.user.role === 'ADMIN') {
-        router.replace('/admin')
-      } else {
-        router.replace('/dashboard')
-      }
+      setWaitingRedirect(true)
     } catch {
       showToast('네트워크 오류가 발생했습니다.', 'error')
     } finally {
