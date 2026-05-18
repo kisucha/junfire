@@ -6,17 +6,17 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-interface RouteParams {
-  params: { id: string }
-}
-
 // PATCH: 현장 이름 수정 또는 활성/비활성 토글
-export async function PATCH(req: NextRequest, { params }: RouteParams) {
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const session = await getServerSession(authOptions)
   if (!session || session.user.role !== 'ADMIN') {
     return NextResponse.json({ success: false, error: '권한이 없습니다.' }, { status: 403 })
   }
 
+  const { id } = await params
   const body = await req.json()
   const updateData: { name?: string; isActive?: boolean } = {}
 
@@ -24,9 +24,8 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     if (!body.name.trim()) {
       return NextResponse.json({ success: false, error: '현장 이름을 입력해주세요.' }, { status: 400 })
     }
-    // 다른 현장과 이름 중복 확인
     const dup = await prisma.workLocation.findFirst({
-      where: { name: body.name.trim(), NOT: { id: params.id } },
+      where: { name: body.name.trim(), NOT: { id } },
     })
     if (dup) {
       return NextResponse.json({ success: false, error: '이미 등록된 현장 이름입니다.' }, { status: 409 })
@@ -39,7 +38,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   }
 
   const updated = await prisma.workLocation.update({
-    where: { id: params.id },
+    where: { id },
     data: updateData,
   })
 
@@ -47,13 +46,17 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 }
 
 // DELETE: 현장 삭제 (기존 WorkRecord.location 값에는 영향 없음)
-export async function DELETE(_req: NextRequest, { params }: RouteParams) {
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const session = await getServerSession(authOptions)
   if (!session || session.user.role !== 'ADMIN') {
     return NextResponse.json({ success: false, error: '권한이 없습니다.' }, { status: 403 })
   }
 
-  await prisma.workLocation.delete({ where: { id: params.id } })
+  const { id } = await params
+  await prisma.workLocation.delete({ where: { id } })
 
   return NextResponse.json({ success: true })
 }
