@@ -71,9 +71,13 @@ export async function POST(req: NextRequest) {
       },
     })
   } catch (error: unknown) {
-    console.error('[PDF 생성 오류]', error)
+    // 에러 상세 로깅 — pm2 logs junfire --err 로 확인 가능
+    const errMsg = error instanceof Error ? error.message : String(error)
+    const errStack = error instanceof Error ? error.stack : undefined
+    console.error('[PDF 생성 오류] 메시지:', errMsg)
+    console.error('[PDF 생성 오류] 스택:', errStack)
     return NextResponse.json(
-      { error: 'PDF 생성 중 오류가 발생했습니다.' },
+      { error: `PDF 생성 중 오류가 발생했습니다. (${errMsg})` },
       { status: 500 }
     )
   }
