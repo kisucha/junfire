@@ -36,11 +36,13 @@ Font.register({
 
 // ===== 상태 한국어 레이블 =====
 // StatusLabel을 types/index.ts에서 직접 재사용 (중복 정의 방지)
+// HOLIDAY 포함 — 모든 RecordStatus 커버
 const STATUS_LABEL: Record<string, string> = {
   WORK: StatusLabel.WORK,
   SICK: StatusLabel.SICK,
   ANNUAL: StatusLabel.ANNUAL,
   UNPAID: StatusLabel.UNPAID,
+  HOLIDAY: StatusLabel.HOLIDAY,
 }
 
 // ===== 스타일 정의 =====
@@ -181,13 +183,14 @@ const styles = StyleSheet.create({
   colLocation: { width: '18%' },
   colDescription: { width: '36%' },
 
-  // 집계 요약 테이블 컬럼
-  colSummaryName: { width: '20%' },
-  colSummaryRole: { width: '12%' },
-  colSummaryWorkDays: { width: '14%' },
-  colSummaryWorkHours: { width: '20%' },
-  colSummarySick: { width: '11%' },
-  colSummaryAnnual: { width: '11%' },
+  // 집계 요약 테이블 컬럼 (공휴일 컬럼 추가로 너비 재배분)
+  colSummaryName: { width: '18%' },
+  colSummaryRole: { width: '10%' },
+  colSummaryWorkDays: { width: '12%' },
+  colSummaryWorkHours: { width: '18%' },
+  colSummarySick: { width: '10%' },
+  colSummaryAnnual: { width: '10%' },
+  colSummaryHoliday: { width: '10%' },  // 공휴일 컬럼 신규
   colSummaryUnpaid: { width: '12%' },
 
   // 페이지 헤더 (고정 위치)
@@ -419,6 +422,7 @@ function SummaryTable({ users }: { users: UserReportEntry[] }) {
         <Text style={[styles.summaryHeaderText, styles.colSummaryWorkHours]}>총 근무시간</Text>
         <Text style={[styles.summaryHeaderText, styles.colSummarySick]}>병가</Text>
         <Text style={[styles.summaryHeaderText, styles.colSummaryAnnual]}>연차</Text>
+        <Text style={[styles.summaryHeaderText, styles.colSummaryHoliday]}>공휴일</Text>
         <Text style={[styles.summaryHeaderText, styles.colSummaryUnpaid]}>무급</Text>
       </View>
 
@@ -438,6 +442,7 @@ function SummaryTable({ users }: { users: UserReportEntry[] }) {
             </Text>
             <Text style={styles.colSummarySick}>{entry.sickDays}일</Text>
             <Text style={styles.colSummaryAnnual}>{entry.annualDays}일</Text>
+            <Text style={styles.colSummaryHoliday}>{entry.holidayDays}일</Text>
             <Text style={styles.colSummaryUnpaid}>{entry.unpaidDays}일</Text>
           </View>
         )

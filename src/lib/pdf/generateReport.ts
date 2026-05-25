@@ -27,6 +27,7 @@ export interface UserReportEntry {
   sickDays: number        // 병가 일수
   annualDays: number      // 연차 일수
   unpaidDays: number      // 무급 일수
+  holidayDays: number     // 공휴일 일수 (WorkRecord에 HOLIDAY 기록이 있는 경우)
   // 날짜별 상세 기록 (날짜 오름차순 정렬)
   records: WorkRecordDTO[]
 }
@@ -83,6 +84,7 @@ export async function generateReportPDF(
         sickDays: 0,
         annualDays: 0,
         unpaidDays: 0,
+        holidayDays: 0,
         records: [],
       })
     }
@@ -103,6 +105,9 @@ export async function generateReportPDF(
       entry.annualDays++
     } else if (status === 'UNPAID') {
       entry.unpaidDays++
+    } else if (status === 'HOLIDAY') {
+      // 공휴일 기록이 WorkRecord에 직접 등록된 경우 집계 (Holiday 테이블과 별개)
+      entry.holidayDays++
     }
   }
 

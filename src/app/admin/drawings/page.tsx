@@ -1,5 +1,6 @@
 // src/app/admin/drawings/page.tsx
 // 목적: 관리자 도면 관리 페이지 — 업로드 / 목록 / 삭제
+// 현장명: WorkLocation DB 목록 드롭다운 + "기타" 직접 입력 지원
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
@@ -11,9 +12,15 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 
+// WorkLocation 드롭다운 옵션 타입
+interface LocationOption {
+  id: string
+  name: string
+}
+
 /**
  * 관리자 도면 관리 페이지
- * - 도면 업로드 폼 (현장명, 층, PDF 파일)
+ * - 도면 업로드 폼 (현장명 드롭다운/기타, 층, PDF 파일)
  * - 도면 목록 테이블 (현장명, 층, 파일명, 크기, 등록일, 뷰어 이동, 삭제)
  * - 삭제: 확인 모달 후 DELETE 요청
  */
@@ -26,8 +33,14 @@ export default function AdminDrawingsPage() {
   const [drawings, setDrawings] = useState<DrawingDTO[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
+  // WorkLocation 현장명 드롭다운 목록
+  const [locations, setLocations] = useState<LocationOption[]>([])
+
   // 업로드 폼 상태
-  const [siteName, setSiteName] = useState('')
+  // siteNameMode: 'select' = 드롭다운 선택, 'other' = 직접 입력
+  const [siteNameMode, setSiteNameMode] = useState<'select' | 'other'>('select')
+  const [siteName, setSiteName] = useState('')         // select 선택값 또는 기타 입력값
+  const [siteNameOther, setSiteNameOther] = useState('') // "기타" 선택 시 직접 입력
   const [floor, setFloor] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
@@ -35,6 +48,27 @@ export default function AdminDrawingsPage() {
   // 삭제 확인 모달
   const [deleteTarget, setDeleteTarget] = useState<DrawingDTO | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // WorkLocation 목록 로드
+  useEffect(() => {
+    async function fetchLocations() {
+      try {
+        const res = await fetch('/api/worklocation')
+        const json = await res.json()
+        if (res.ok && json.success) {
+          setLocations(json.data)
+          // 첫 번째 현장명 기본 선택
+          if (json.data.length > 0) {
+            setSiteName(json.data[0].name)
+          }
+        }
+      } catch {
+        // 현장명 목록 조회 실패 시 직접 입력 모드로 전환
+        setSiteNameMode('other')
+      }
+    }
+    fetchLocations()
+  }, [])
 
   // 도면 목록 로드
   async function fetchDrawings() {
@@ -56,6 +90,38 @@ export default function AdminDrawingsPage() {
 
   useEffect(() => { fetchDrawings() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 현장명 드롭다운 변경 핸들러
+  function handleSiteNameSelectChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const value = e.target.value
+    if (value === '__OTHER__') {
+      // "기타" 선택 시 직접 입력 모드로 전환
+      setSiteNameMode('other')
+      setSiteName('')
+      setSiteNameOther('')
+    } else {
+      setSiteNameMode('select')
+      setSiteName(value)
+    }
+  }
+
+  // "기타" 직접 입력 → siteName 동기화
+  function handleSiteNameOtherChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setSiteNameOther(e.target.value)
+    setSiteName(e.target.value)
+  }
+
+  // 드롭다운으로 돌아가기
+  function handleBackToSelect() {
+    setSiteNameMode('select')
+    setSiteNameOther('')
+    // 첫 번째 현장으로 초기화
+    if (locations.length > 0) {
+      setSiteName(locations[0].name)
+    } else {
+      setSiteName('')
+    }
+  }
+
   // 파일 선택 핸들러
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null
@@ -68,16 +134,17 @@ export default function AdminDrawingsPage() {
     setSelectedFile(file)
   }
 
-  // 업로드 처리
+  // 업로드 처리 (관리자 전용 엔드포인트 사용)
   async function handleUpload() {
-    if (!siteName.trim()) { showToast('현장명을 입력해주세요.', 'error'); return }
+    const finalSiteName = siteNameMode === 'other' ? siteNameOther.trim() : siteName.trim()
+    if (!finalSiteName) { showToast('현장명을 입력해주세요.', 'error'); return }
     if (!floor.trim()) { showToast('층을 입력해주세요.', 'error'); return }
     if (!selectedFile) { showToast('PDF 파일을 선택해주세요.', 'error'); return }
 
     setIsUploading(true)
     try {
       const formData = new FormData()
-      formData.append('siteName', siteName.trim())
+      formData.append('siteName', finalSiteName)
       formData.append('floor', floor.trim())
       formData.append('file', selectedFile)
 
@@ -95,12 +162,17 @@ export default function AdminDrawingsPage() {
       showToast('도면이 등록되었습니다.', 'success')
 
       // 폼 초기화
-      setSiteName('')
+      if (siteNameMode === 'select' && locations.length > 0) {
+        setSiteName(locations[0].name)
+      } else {
+        setSiteNameMode('other')
+        setSiteNameOther('')
+        setSiteName('')
+      }
       setFloor('')
       setSelectedFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
 
-      // 목록 새로고침
       await fetchDrawings()
     } catch {
       showToast('네트워크 오류가 발생했습니다.', 'error')
@@ -109,7 +181,7 @@ export default function AdminDrawingsPage() {
     }
   }
 
-  // 삭제 처리
+  // 삭제 처리 (관리자 전용 엔드포인트 사용)
   async function handleDelete() {
     if (!deleteTarget) return
 
@@ -142,7 +214,7 @@ export default function AdminDrawingsPage() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  // 등록일 형식
+  // 등록일 형식 (YYYY-MM-DD)
   function formatDate(isoStr: string): string {
     const d = new Date(isoStr)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -161,15 +233,63 @@ export default function AdminDrawingsPage() {
         <h2 className="text-sm font-semibold text-gray-700 mb-4">도면 등록</h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-          {/* 현장명 */}
-          <Input
-            label="현장명"
-            type="text"
-            value={siteName}
-            onChange={(e) => setSiteName(e.target.value)}
-            placeholder="현장명을 입력하세요"
-            disabled={isUploading}
-          />
+          {/* 현장명 — WorkLocation 드롭다운 + "기타" 직접 입력 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              현장명
+            </label>
+            {siteNameMode === 'select' ? (
+              <div>
+                <select
+                  value={siteName}
+                  onChange={handleSiteNameSelectChange}
+                  disabled={isUploading}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+                    focus:outline-none focus:ring-2 focus:ring-blue-500
+                    disabled:opacity-50 disabled:bg-gray-50"
+                >
+                  {/* 등록된 현장명 목록 */}
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.name}>
+                      {loc.name}
+                    </option>
+                  ))}
+                  {/* 기타: 직접 입력 옵션 */}
+                  <option value="__OTHER__">기타 (직접 입력)</option>
+                </select>
+                {locations.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    등록된 현장이 없습니다. 현장 관리에서 추가하거나 직접 입력하세요.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={siteNameOther}
+                  onChange={handleSiteNameOtherChange}
+                  placeholder="현장명을 직접 입력하세요"
+                  disabled={isUploading}
+                  className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm
+                    focus:outline-none focus:ring-2 focus:ring-blue-500
+                    disabled:opacity-50"
+                />
+                {/* 드롭다운으로 돌아가기 버튼 (현장 목록이 있을 때만) */}
+                {locations.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleBackToSelect}
+                    disabled={isUploading}
+                    className="px-3 py-2 text-xs text-blue-600 border border-blue-300 rounded-md
+                      hover:bg-blue-50 disabled:opacity-50"
+                  >
+                    목록
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* 층 */}
           <Input
