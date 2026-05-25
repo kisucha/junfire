@@ -11,6 +11,7 @@ import {
   View,
   Font,
   StyleSheet,
+  renderToBuffer,
 } from '@react-pdf/renderer'
 import path from 'path'
 import { RoleLabel, StatusLabel } from '@/types'
@@ -604,4 +605,21 @@ export function ReportDocument({
       ))}
     </Document>
   )
+}
+
+/**
+ * JSX 컨텍스트에서 PDF 버퍼 생성 — .tsx 파일에서 호출해야 React element 타입 정합성 보장
+ * generateReport.ts (JSX 없는 .ts)에서 React.createElement 직접 호출 시 reconciler 오류 방지
+ */
+export async function renderReportDocument(props: ReportDocumentProps): Promise<Buffer> {
+  const pdfBuffer = await renderToBuffer(
+    <ReportDocument
+      startDate={props.startDate}
+      endDate={props.endDate}
+      sortedUsers={props.sortedUsers}
+      holidayMap={props.holidayMap}
+      generatedAt={props.generatedAt}
+    />
+  )
+  return pdfBuffer as Buffer
 }

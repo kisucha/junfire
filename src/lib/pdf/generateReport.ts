@@ -2,13 +2,12 @@
 // 목적: 기간 내 전직원 업무 기록 조회, 직원별 집계, @react-pdf/renderer 버퍼 반환
 // @react-pdf/renderer 서버사이드 전용 — 클라이언트 컴포넌트에서 import 금지
 
-import React from 'react'
-import { renderToBuffer } from '@react-pdf/renderer'
 import { prisma } from '@/lib/prisma'
 import { formatHoursToDisplay } from '@/lib/utils/time'
 // formatDateKo, getDayOfWeekKo는 ReportDocument.tsx에서 직접 사용
 import type { WorkRecordDTO, HolidayDTO, GenerateReportInput, Role, RecordStatus } from '@/types'
-import { ReportDocument } from './ReportDocument'
+// renderToBuffer는 ReportDocument.tsx (JSX 파일)에서 직접 호출 — .ts에서 React.createElement 사용 시 reconciler 오류
+import { renderReportDocument } from './ReportDocument'
 
 // ===== 내부 집계 타입 =====
 
@@ -122,19 +121,17 @@ export async function generateReportPDF(
   }
 
   // --- 6. @react-pdf/renderer로 PDF 버퍼 생성 ---
-  // React.createElement 사용 — JSX transform 의존 없이 서버사이드 안전 호출
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pdfBuffer = await renderToBuffer(
-    React.createElement(ReportDocument, {
-      startDate,
-      endDate,
-      sortedUsers,
-      holidayMap,
-      generatedAt: new Date().toISOString(),
-    }) as any
-  )
+  // renderReportDocument (ReportDocument.tsx의 .tsx 함수) 호출 — JSX transform 보장
+  // .ts에서 React.createElement 직접 호출 시 reconciler 타입 불일치로 React error #31 발생
+  const pdfBuffer = await renderReportDocument({
+    startDate,
+    endDate,
+    sortedUsers,
+    holidayMap,
+    generatedAt: new Date().toISOString(),
+  })
 
-  return pdfBuffer as Buffer
+  return pdfBuffer
 }
 
 /**
