@@ -5,8 +5,9 @@
   "description": "JunFire Protection 업무시간 관리 시스템 — Next.js 14 App Router 기반 풀스택 웹 애플리케이션",
   "scripts": {
     "dev": "next dev -p 9955",
-    "build": "next build",
+    "build": "next build && node scripts/patch-react-pdf.js",
     "start": "next start -p 9955",
+    "postinstall": "node scripts/patch-react-pdf.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "ts-node prisma/seed.ts",

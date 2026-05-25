@@ -45,6 +45,31 @@
 
 ---
 
+### 이슈 #7 완료 — PDF 생성 React error #31 근본 수정 (2026-05-25)
+
+**원인 분석 (3회 이후 심층 조사)**
+- Next.js RSC(React Server Components) 컴파일러가 JSX 팩토리로 `vendored["react-rsc"].ReactJsxRuntime` 사용
+- RSC JSX runtime은 `Symbol.for("react.transitional.element")` 를 `$$typeof`로 사용 (React 18.3+)
+- @react-pdf/renderer에 번들된 react-reconciler@0.23.0은 `Symbol.for("react.element")`만 인식
+- 두 심볼 불일치로 모든 JSX 요소를 "invalid React child"로 처리 → Minified React error #31
+
+**수정 내용**
+- `scripts/patch-react-pdf.js` 신규 생성:
+  - `ca` 상수(react.element) 뒤에 `caT` 상수(react.transitional.element) 추가
+  - reconciler 내 `switch(x.$$typeof)` 4개에 `case caT:` fall-through 추가
+  - node_modules + standalone/node_modules 양쪽 자동 패치
+  - 기존 파일 .bak 백업 후 덮어쓰기
+- `package.json` scripts 수정:
+  - `"postinstall": "node scripts/patch-react-pdf.js"` — npm install 후 자동 패치
+  - `"build": "next build && node scripts/patch-react-pdf.js"` — 빌드 후 standalone 재패치
+
+**검증**
+- standalone server (port 3000, patched): PDF 생성 성공 ✅ (23,120 bytes, %PDF-1.3 헤더)
+- dev server (port 9955, patched + 재시작): PDF 생성 성공 ✅ (23,120 bytes)
+- 임시 테스트 파일 전체 삭제 완료
+
+---
+
 ### 이슈 #6 완료 — 도면 게시판 신규 기능
 **DB 스키마**
 - `prisma/schema.prisma`: Drawing 모델 추가 (siteName, floor, fileName, filePath, fileSize, createdBy, createdAt)
