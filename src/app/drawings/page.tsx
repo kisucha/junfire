@@ -236,10 +236,15 @@ export default function DrawingsPage() {
     }
   }
 
-  // 현장명 검색 필터 적용
-  const filtered = drawings.filter((d) =>
-    d.siteName.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  // 현장명, 층, 파일명 검색 필터 적용
+  const filtered = drawings.filter((d) => {
+    const q = searchTerm.toLowerCase()
+    return (
+      d.siteName.toLowerCase().includes(q) ||
+      d.floor.toLowerCase().includes(q) ||
+      d.fileName.toLowerCase().includes(q)
+    )
+  })
 
   // 삭제 버튼 표시 여부 — 본인 등록 도면 또는 ADMIN
   function canDelete(drawing: DrawingDTO): boolean {
@@ -394,7 +399,7 @@ export default function DrawingsPage() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
         <input
           type="text"
-          placeholder="현장명으로 검색..."
+          placeholder="현장명, 층, 파일명으로 검색..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full max-w-sm rounded-md border border-gray-300 px-3 py-2 text-sm
