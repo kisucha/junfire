@@ -178,5 +178,5 @@ export interface DrawingDTO {
 }
 
 // 도면 구분 옵션 상수 (업로드·수정 폼 공통)
-export const DRAWING_TYPES = ['1st', '2nd', 'RCP'] as const
+export const DRAWING_TYPES = ['1st', '2nd', 'RCP', '기타'] as const
 export type DrawingType = typeof DRAWING_TYPES[number]

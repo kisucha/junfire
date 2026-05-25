@@ -13,7 +13,7 @@ import fs from 'fs'
 import path from 'path'
 
 // 허용 도면 구분값
-const VALID_TYPES = ['1st', '2nd', 'RCP'] as const
+const VALID_TYPES = ['1st', '2nd', 'RCP', '기타'] as const
 
 /**
  * PUT /api/drawings/[id]

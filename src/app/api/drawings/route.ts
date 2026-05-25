@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
 
     // type 필드: 1st / 2nd / RCP 유효성 검증 (기본값: 1st)
     const typeRaw = formData.get('type')
-    const VALID_TYPES = ['1st', '2nd', 'RCP']
+    const VALID_TYPES = ['1st', '2nd', 'RCP', '기타']
     const drawingType = (typeof typeRaw === 'string' && VALID_TYPES.includes(typeRaw)) ? typeRaw : '1st'
 
     // DB 메타데이터 저장

@@ -23,8 +23,8 @@ interface LocationOption {
 }
 
 // 구분 타입 정의
-type DrawingType = '1st' | '2nd' | 'RCP'
-const DRAWING_TYPES: DrawingType[] = ['1st', '2nd', 'RCP']
+type DrawingType = '1st' | '2nd' | 'RCP' | '기타'
+const DRAWING_TYPES: DrawingType[] = ['1st', '2nd', 'RCP', '기타']
 
 /**
  * 도면 게시판 목록 페이지
