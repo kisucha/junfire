@@ -1,8 +1,9 @@
 // src/app/drawings/page.tsx
 // 목적: 도면 게시판 목록 페이지 — 직원·관리자 모두 열람 및 업로드 가능
 // - 직원·관리자 모두 도면 업로드 가능 (POST /api/drawings)
-// - 본인 등록 도면 또는 ADMIN은 삭제 가능 (DELETE /api/drawings/[id])
+// - 본인 등록 도면 또는 ADMIN은 수정/삭제 가능 (PUT/DELETE /api/drawings/[id])
 // - 현장명 드롭다운: WorkLocation DB 목록 + "기타" 직접 입력
+// - 구분 select: 1st, 2nd, RCP (기본 1st)
 // - 등록일 최신순 정렬 (API에서 createdAt DESC 보장)
 'use client'
 
@@ -21,11 +22,17 @@ interface LocationOption {
   name: string
 }
 
+// 구분 타입 정의
+type DrawingType = '1st' | '2nd' | 'RCP'
+const DRAWING_TYPES: DrawingType[] = ['1st', '2nd', 'RCP']
+
 /**
  * 도면 게시판 목록 페이지
  * - 현장명 드롭다운 + "기타" 직접 입력
+ * - 구분 select (1st, 2nd, RCP)
  * - 업로드 폼 토글 (접기/펼치기)
- * - 본인 도면만 삭제 버튼 표시 (ADMIN은 전체 표시)
+ * - 본인 도면만 수정/삭제 버튼 표시 (ADMIN은 전체 표시)
+ * - 수정 모달: div overlay 기반
  * - 행 클릭 → /drawings/[id] 이동 (PDF 뷰어)
  */
 export default function DrawingsPage() {
@@ -34,7 +41,7 @@ export default function DrawingsPage() {
   const { data: session } = useSession()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // 현재 로그인 사용자 정보 (삭제 권한 확인용)
+  // 현재 로그인 사용자 정보 (수정/삭제 권한 확인용)
   const currentUserId = session?.user?.id ?? ''
   const isAdmin = session?.user?.role === 'ADMIN'
 
@@ -57,8 +64,18 @@ export default function DrawingsPage() {
   const [siteName, setSiteName] = useState('')          // 선택된 현장명 또는 기타 입력값
   const [siteNameOther, setSiteNameOther] = useState('') // "기타" 선택 시 직접 입력값
   const [floor, setFloor] = useState('')
+  const [drawingType, setDrawingType] = useState<DrawingType>('1st') // 구분 (기본 '1st')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
+
+  // 수정 모달 상태
+  const [editTarget, setEditTarget] = useState<DrawingDTO | null>(null)
+  const [editSiteNameMode, setEditSiteNameMode] = useState<'select' | 'other'>('select')
+  const [editSiteName, setEditSiteName] = useState('')
+  const [editSiteNameOther, setEditSiteNameOther] = useState('')
+  const [editFloor, setEditFloor] = useState('')
+  const [editType, setEditType] = useState<DrawingType>('1st')
+  const [isSaving, setIsSaving] = useState(false)
 
   // 삭제 확인 모달
   const [deleteTarget, setDeleteTarget] = useState<DrawingDTO | null>(null)
@@ -106,7 +123,7 @@ export default function DrawingsPage() {
     fetchDrawings()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 현장명 드롭다운 변경 핸들러
+  // 현장명 드롭다운 변경 핸들러 (업로드 폼)
   function handleSiteNameSelectChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const value = e.target.value
     if (value === '__OTHER__') {
@@ -120,13 +137,13 @@ export default function DrawingsPage() {
     }
   }
 
-  // "기타" 직접 입력 → siteName 동기화
+  // "기타" 직접 입력 → siteName 동기화 (업로드 폼)
   function handleSiteNameOtherChange(e: React.ChangeEvent<HTMLInputElement>) {
     setSiteNameOther(e.target.value)
     setSiteName(e.target.value)
   }
 
-  // 드롭다운으로 돌아가기
+  // 드롭다운으로 돌아가기 (업로드 폼)
   function handleBackToSelect() {
     setSiteNameMode('select')
     setSiteNameOther('')
@@ -134,6 +151,79 @@ export default function DrawingsPage() {
       setSiteName(locations[0].name)
     } else {
       setSiteName('')
+    }
+  }
+
+  // 수정 모달 열기
+  function handleEditOpen(drawing: DrawingDTO) {
+    setEditTarget(drawing)
+    const inList = locations.some((l) => l.name === drawing.siteName)
+    if (inList) {
+      setEditSiteNameMode('select')
+      setEditSiteName(drawing.siteName)
+      setEditSiteNameOther('')
+    } else {
+      setEditSiteNameMode('other')
+      setEditSiteName(drawing.siteName)
+      setEditSiteNameOther(drawing.siteName)
+    }
+    setEditFloor(drawing.floor)
+    setEditType((drawing.type as DrawingType) ?? '1st')
+  }
+
+  // 수정 모달 현장명 드롭다운 변경
+  function handleEditSiteNameSelectChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const value = e.target.value
+    if (value === '__OTHER__') {
+      setEditSiteNameMode('other')
+      setEditSiteName('')
+      setEditSiteNameOther('')
+    } else {
+      setEditSiteNameMode('select')
+      setEditSiteName(value)
+    }
+  }
+
+  // 수정 모달 "기타" 직접 입력
+  function handleEditSiteNameOtherChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setEditSiteNameOther(e.target.value)
+    setEditSiteName(e.target.value)
+  }
+
+  // 수정 모달 드롭다운으로 돌아가기
+  function handleEditBackToSelect() {
+    setEditSiteNameMode('select')
+    setEditSiteNameOther('')
+    if (locations.length > 0) {
+      setEditSiteName(locations[0].name)
+    } else {
+      setEditSiteName('')
+    }
+  }
+
+  // 수정 저장 처리
+  async function handleEditSave() {
+    if (!editTarget) return
+    const finalSiteName = editSiteNameMode === 'other' ? editSiteNameOther.trim() : editSiteName.trim()
+    if (!finalSiteName) { showToast('현장명을 입력해주세요.', 'error'); return }
+    if (!editFloor.trim()) { showToast('층을 입력해주세요.', 'error'); return }
+
+    setIsSaving(true)
+    try {
+      const res = await fetch(`/api/drawings/${editTarget.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteName: finalSiteName, floor: editFloor.trim(), type: editType }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json.success) { showToast(json.error ?? '수정에 실패했습니다.', 'error'); return }
+      showToast('수정되었습니다.', 'success')
+      setEditTarget(null)
+      await fetchDrawings()
+    } catch {
+      showToast('네트워크 오류가 발생했습니다.', 'error')
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -174,6 +264,7 @@ export default function DrawingsPage() {
       const formData = new FormData()
       formData.append('siteName', finalSiteName)
       formData.append('floor', floor.trim())
+      formData.append('type', drawingType)
       formData.append('file', selectedFile)
 
       const res = await fetch('/api/drawings', {
@@ -197,6 +288,7 @@ export default function DrawingsPage() {
         setSiteName('')
       }
       setFloor('')
+      setDrawingType('1st')
       setSelectedFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
       setShowUploadForm(false)
@@ -246,8 +338,8 @@ export default function DrawingsPage() {
     )
   })
 
-  // 삭제 버튼 표시 여부 — 본인 등록 도면 또는 ADMIN
-  function canDelete(drawing: DrawingDTO): boolean {
+  // 수정/삭제 버튼 표시 여부 — 본인 등록 도면 또는 ADMIN
+  function canModify(drawing: DrawingDTO): boolean {
     return isAdmin || drawing.createdBy === currentUserId
   }
 
@@ -276,7 +368,7 @@ export default function DrawingsPage() {
         <div className="bg-white rounded-xl shadow-sm border border-blue-200 p-5">
           <h2 className="text-sm font-semibold text-gray-700 mb-4">도면 등록</h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
             {/* 현장명 드롭다운 + "기타" 직접 입력 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -347,6 +439,27 @@ export default function DrawingsPage() {
                   focus:outline-none focus:ring-2 focus:ring-blue-500
                   disabled:opacity-50"
               />
+            </div>
+
+            {/* 구분 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                구분
+              </label>
+              <select
+                value={drawingType}
+                onChange={(e) => setDrawingType(e.target.value as DrawingType)}
+                disabled={isUploading}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+                  focus:outline-none focus:ring-2 focus:ring-blue-500
+                  disabled:opacity-50 disabled:bg-gray-50"
+              >
+                {DRAWING_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -424,9 +537,11 @@ export default function DrawingsPage() {
                 <tr>
                   <th className="px-5 py-3 text-left font-semibold text-gray-600">현장명</th>
                   <th className="px-5 py-3 text-left font-semibold text-gray-600">층</th>
+                  <th className="px-5 py-3 text-left font-semibold text-gray-600">구분</th>
                   <th className="px-5 py-3 text-left font-semibold text-gray-600 hidden sm:table-cell">파일명</th>
                   <th className="px-5 py-3 text-left font-semibold text-gray-600 hidden md:table-cell">크기</th>
                   <th className="px-5 py-3 text-left font-semibold text-gray-600">등록일</th>
+                  <th className="px-5 py-3 text-center font-semibold text-gray-600">수정</th>
                   <th className="px-5 py-3 text-center font-semibold text-gray-600">삭제</th>
                 </tr>
               </thead>
@@ -436,7 +551,7 @@ export default function DrawingsPage() {
                     key={drawing.id}
                     className="hover:bg-blue-50 transition-colors"
                   >
-                    {/* 행 클릭 → PDF 뷰어 이동 (삭제 버튼 제외) */}
+                    {/* 행 클릭 → PDF 뷰어 이동 (수정/삭제 버튼 제외) */}
                     <td
                       className="px-5 py-4 font-medium text-gray-800 cursor-pointer"
                       onClick={() => router.push(`/drawings/${drawing.id}`)}
@@ -448,6 +563,12 @@ export default function DrawingsPage() {
                       onClick={() => router.push(`/drawings/${drawing.id}`)}
                     >
                       {drawing.floor}
+                    </td>
+                    <td
+                      className="px-5 py-4 text-gray-600 cursor-pointer"
+                      onClick={() => router.push(`/drawings/${drawing.id}`)}
+                    >
+                      {drawing.type ?? '-'}
                     </td>
                     <td
                       className="px-5 py-4 text-gray-500 hidden sm:table-cell max-w-xs truncate cursor-pointer"
@@ -467,9 +588,26 @@ export default function DrawingsPage() {
                     >
                       {formatDate(drawing.createdAt)}
                     </td>
+                    {/* 수정 버튼 — 본인 또는 ADMIN만 표시 */}
+                    <td className="px-5 py-4 text-center">
+                      {canModify(drawing) ? (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleEditOpen(drawing)
+                          }}
+                        >
+                          수정
+                        </Button>
+                      ) : (
+                        <span className="text-gray-300 text-xs">-</span>
+                      )}
+                    </td>
                     {/* 삭제 버튼 — 본인 또는 ADMIN만 표시 */}
                     <td className="px-5 py-4 text-center">
-                      {canDelete(drawing) ? (
+                      {canModify(drawing) ? (
                         <Button
                           variant="danger"
                           size="sm"
@@ -497,6 +635,116 @@ export default function DrawingsPage() {
         <p className="text-xs text-gray-400 text-right">
           총 {filtered.length}건
         </p>
+      )}
+
+      {/* 수정 모달 (div overlay) */}
+      {editTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <h3 className="text-base font-semibold text-gray-800">도면 정보 수정</h3>
+
+            {/* 현장명 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">현장명</label>
+              {editSiteNameMode === 'select' ? (
+                <div>
+                  <select
+                    value={editSiteName}
+                    onChange={handleEditSiteNameSelectChange}
+                    disabled={isSaving}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-blue-500
+                      disabled:opacity-50 disabled:bg-gray-50"
+                  >
+                    {locations.map((loc) => (
+                      <option key={loc.id} value={loc.name}>
+                        {loc.name}
+                      </option>
+                    ))}
+                    <option value="__OTHER__">기타 (직접 입력)</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={editSiteNameOther}
+                    onChange={handleEditSiteNameOtherChange}
+                    placeholder="현장명을 직접 입력하세요"
+                    disabled={isSaving}
+                    className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-blue-500
+                      disabled:opacity-50"
+                  />
+                  {locations.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleEditBackToSelect}
+                      disabled={isSaving}
+                      className="px-3 py-2 text-xs text-blue-600 border border-blue-300 rounded-md
+                        hover:bg-blue-50 disabled:opacity-50"
+                    >
+                      목록
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 층 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">층</label>
+              <input
+                type="text"
+                value={editFloor}
+                onChange={(e) => setEditFloor(e.target.value)}
+                placeholder="예: 1층, 2층, 지하 1층"
+                disabled={isSaving}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+                  focus:outline-none focus:ring-2 focus:ring-blue-500
+                  disabled:opacity-50"
+              />
+            </div>
+
+            {/* 구분 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">구분</label>
+              <select
+                value={editType}
+                onChange={(e) => setEditType(e.target.value as DrawingType)}
+                disabled={isSaving}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+                  focus:outline-none focus:ring-2 focus:ring-blue-500
+                  disabled:opacity-50 disabled:bg-gray-50"
+              >
+                {DRAWING_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 버튼 */}
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="primary"
+                onClick={handleEditSave}
+                isLoading={isSaving}
+                disabled={isSaving}
+              >
+                저장
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setEditTarget(null)}
+                disabled={isSaving}
+              >
+                취소
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 삭제 확인 모달 */}

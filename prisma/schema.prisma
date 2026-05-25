@@ -106,6 +106,7 @@ model Drawing {
   id        String   @id @default(cuid())
   siteName  String                    // 현장명
   floor     String                    // 층 (예: "1층", "지하 1층")
+  type      String   @default("1st") // 도면 구분 (1st / 2nd / RCP)
   fileName  String                    // 원본 업로드 파일명 (표시용)
   filePath  String                    // 저장 파일명 (uploads/drawings/ 내 파일명)
   fileSize  Int                       // 파일 크기 (bytes)

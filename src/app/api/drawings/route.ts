@@ -56,6 +56,7 @@ export async function GET(req: NextRequest) {
     id: d.id,
     siteName: d.siteName,
     floor: d.floor,
+    type: d.type,
     fileName: d.fileName,
     fileSize: d.fileSize,
     createdBy: d.createdBy,
@@ -119,11 +120,17 @@ export async function POST(req: NextRequest) {
     const filePath = path.join(uploadsDir, savedFileName)
     fs.writeFileSync(filePath, buffer)
 
+    // type 필드: 1st / 2nd / RCP 유효성 검증 (기본값: 1st)
+    const typeRaw = formData.get('type')
+    const VALID_TYPES = ['1st', '2nd', 'RCP']
+    const drawingType = (typeof typeRaw === 'string' && VALID_TYPES.includes(typeRaw)) ? typeRaw : '1st'
+
     // DB 메타데이터 저장
     const drawing = await prisma.drawing.create({
       data: {
         siteName: siteName.trim(),
         floor: floor.trim(),
+        type: drawingType,
         fileName: file.name,        // 원본 파일명 (표시용)
         filePath: savedFileName,    // 저장 파일명 (UUID 기반)
         fileSize: file.size,
@@ -137,6 +144,7 @@ export async function POST(req: NextRequest) {
         id: drawing.id,
         siteName: drawing.siteName,
         floor: drawing.floor,
+        type: drawing.type,
         fileName: drawing.fileName,
         fileSize: drawing.fileSize,
         createdBy: drawing.createdBy,

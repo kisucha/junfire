@@ -170,8 +170,13 @@ export interface DrawingDTO {
   id: string
   siteName: string    // 현장명
   floor: string       // 층
+  type: string        // 도면 구분 (1st / 2nd / RCP)
   fileName: string    // 원본 파일명 (표시용)
   fileSize: number    // 파일 크기 (bytes)
-  createdBy: string   // 등록 관리자 ID
+  createdBy: string   // 등록자 ID
   createdAt: string   // ISO 8601 문자열
 }
+
+// 도면 구분 옵션 상수 (업로드·수정 폼 공통)
+export const DRAWING_TYPES = ['1st', '2nd', 'RCP'] as const
+export type DrawingType = typeof DRAWING_TYPES[number]
