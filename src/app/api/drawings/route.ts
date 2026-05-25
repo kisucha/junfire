@@ -44,6 +44,7 @@ export async function GET(req: NextRequest) {
       id: true,
       siteName: true,
       floor: true,
+      type: true,
       fileName: true,
       fileSize: true,
       createdBy: true,
