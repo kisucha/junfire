@@ -1,5 +1,6 @@
 // src/lib/pdf/ReportDocument.tsx — @react-pdf/renderer PDF 문서 정의
 // 목적: JunFire Protection 업무 기록 보고서 PDF 레이아웃 컴포넌트
+// 레이아웃: 표지 + 직원별 집계(SummaryTable) + 날짜별 상세 기록(DailyGrid 크로스 테이블)
 // Noto Sans KR 한글 폰트 내장 (TTF 파일 임베드) — 서버사이드 전용, 클라이언트 import 금지
 
 import React from 'react'
@@ -14,16 +15,12 @@ import {
   renderToBuffer,
 } from '@react-pdf/renderer'
 import path from 'path'
-import { RoleLabel, StatusLabel } from '@/types'
-import { formatHoursToDisplay } from '@/lib/utils/time'
-import { getDayOfWeekKo } from '@/lib/utils/date'
 import { formatInTimeZone } from 'date-fns-tz'
-import type { WorkRecordDTO, Role } from '@/types'
-import type { UserReportEntry } from './generateReport'
+import type { EmployeeSummaryDTO } from '@/types'
+import { formatHoursToDisplay } from '@/lib/utils/time'
 
 // ===== 폰트 등록 (한글 깨짐 방지) =====
-// [FIX-003] data URI 방식으로 변경 — 파일 경로 파싱 오류 방지 (Windows 백슬래시, Edge Runtime 등)
-// Buffer를 base64 인코딩하여 @react-pdf/renderer에 직접 주입 → 경로 의존성 제거
+// data URI 방식으로 변경 — 파일 경로 파싱 오류 방지 (Windows 백슬래시, Edge Runtime 등)
 function loadFontDataUri(): string {
   const fontPath = path.join(process.cwd(), 'public', 'fonts', 'NotoSansKR-Regular.ttf')
   const buffer = fs.readFileSync(fontPath)
@@ -35,167 +32,58 @@ Font.register({
   src: loadFontDataUri(),
 })
 
-// ===== 상태 한국어 레이블 =====
-// StatusLabel을 types/index.ts에서 직접 재사용 (중복 정의 방지)
-// HOLIDAY 포함 — 모든 RecordStatus 커버
-const STATUS_LABEL: Record<string, string> = {
-  WORK: StatusLabel.WORK,
-  SICK: StatusLabel.SICK,
-  ANNUAL: StatusLabel.ANNUAL,
-  UNPAID: StatusLabel.UNPAID,
-  HOLIDAY: StatusLabel.HOLIDAY,
+// ===== 날짜별 상세 데이터 타입 (generateReport.ts에서 import하여 사용) =====
+
+// 일별 직원 근무 기록
+export interface DailyRecord {
+  hours: number   // 근무시간 (WORK=실제, SICK/ANNUAL/HOLIDAY=8h 고정, UNPAID=제외)
+  status: string  // 기록 상태 코드
+}
+
+// 날짜별 데이터
+export interface DayData {
+  date: string            // YYYY-MM-DD
+  dayOfWeek: number       // 0=일, 1=월, ..., 6=토
+  isHoliday: boolean
+  holidayName: string | null
+  records: Record<string, DailyRecord>  // userId → DailyRecord
+}
+
+// DailyGrid 전체 데이터
+export interface DailyGridData {
+  employees: Array<{ id: string; name: string }>
+  days: DayData[]
+}
+
+// ===== 컴포넌트 Props 타입 =====
+export interface ReportDocumentProps {
+  startDate: string           // YYYY-MM-DD
+  endDate: string             // YYYY-MM-DD
+  summary: EmployeeSummaryDTO[]   // 직원별 집계 (SummaryTable 형식)
+  dailyGrid: DailyGridData        // 날짜별 상세 (DailyGrid 형식)
+  generatedAt: string         // ISO 8601 생성 시각
 }
 
 // ===== 스타일 정의 =====
 const styles = StyleSheet.create({
-  // 페이지 기본 설정
+  // ── 페이지 기본 ──
   page: {
     fontFamily: 'NotoSansKR',
     padding: 40,
-    paddingTop: 50,    // 헤더 공간 확보
-    paddingBottom: 50, // 푸터 공간 확보
+    paddingTop: 55,
+    paddingBottom: 50,
+    fontSize: 9,
+  },
+  // 표지 전용 (페이지 헤더 없음)
+  pageNoPadTop: {
+    fontFamily: 'NotoSansKR',
+    padding: 40,
+    paddingBottom: 50,
     fontSize: 9,
   },
 
-  // 표지 스타일
-  coverPage: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  coverTitle: {
-    fontSize: 24,
-    textAlign: 'center',
-    marginBottom: 8,
-    color: '#1F2937',
-  },
-  coverSubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    color: '#6B7280',
-    marginBottom: 40,
-  },
-  coverMeta: {
-    fontSize: 10,
-    textAlign: 'center',
-    color: '#9CA3AF',
-    marginTop: 8,
-  },
-  coverDivider: {
-    width: 80,
-    borderBottom: '2pt solid #1F2937',
-    marginBottom: 24,
-    marginTop: 8,
-  },
-
-  // 집계 요약 섹션 스타일
-  summaryTitle: {
-    fontSize: 12,
-    marginBottom: 12,
-    color: '#1F2937',
-    borderBottom: '1pt solid #E5E7EB',
-    paddingBottom: 4,
-  },
-  summaryTableHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#1F2937',
-    padding: 5,
-  },
-  summaryTableRow: {
-    flexDirection: 'row',
-    borderBottom: '0.5pt solid #E5E7EB',
-    padding: 4,
-  },
-  summaryTableRowAlt: {
-    flexDirection: 'row',
-    borderBottom: '0.5pt solid #E5E7EB',
-    padding: 4,
-    backgroundColor: '#F9FAFB',
-  },
-  summaryHeaderText: {
-    color: '#FFFFFF',
-    fontSize: 8,
-  },
-
-  // 직원 섹션 헤더
-  sectionHeader: {
-    fontSize: 12,
-    backgroundColor: '#F3F4F6',
-    padding: 6,
-    marginTop: 16,
-    marginBottom: 8,
-    color: '#1F2937',
-  },
-
-  // 집계 행 (직원 헤더 아래 요약)
-  summaryRow: {
-    flexDirection: 'row',
-    marginBottom: 8,
-    flexWrap: 'wrap',
-  },
-  summaryItem: {
-    flex: 1,
-    fontSize: 9,
-    color: '#374151',
-    minWidth: 80,
-  },
-  summaryLabel: {
-    color: '#6B7280',
-  },
-  summaryValue: {
-    color: '#1F2937',
-  },
-
-  // 상세 테이블 헤더
-  tableHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#1F2937',
-    padding: 4,
-  },
-  tableHeaderText: {
-    color: '#FFFFFF',
-    fontSize: 8,
-  },
-
-  // 상세 테이블 행
-  tableRow: {
-    flexDirection: 'row',
-    borderBottom: '0.5pt solid #E5E7EB',
-    padding: 3,
-  },
-  tableRowAlt: {
-    flexDirection: 'row',
-    borderBottom: '0.5pt solid #E5E7EB',
-    padding: 3,
-    backgroundColor: '#F9FAFB',
-  },
-  tableRowHoliday: {
-    flexDirection: 'row',
-    borderBottom: '0.5pt solid #E5E7EB',
-    padding: 3,
-    backgroundColor: '#FEF3C7',  // 공휴일 행 — 노란 배경
-  },
-
-  // 컬럼 너비 — A4 용지 기준 (40pt padding 양쪽)
-  colDate: { width: '14%' },
-  colDay: { width: '8%' },
-  colStatus: { width: '12%' },
-  colHours: { width: '12%' },
-  colLocation: { width: '18%' },
-  colDescription: { width: '36%' },
-
-  // 집계 요약 테이블 컬럼 (공휴일 컬럼 추가로 너비 재배분)
-  colSummaryName: { width: '18%' },
-  colSummaryRole: { width: '10%' },
-  colSummaryWorkDays: { width: '12%' },
-  colSummaryWorkHours: { width: '18%' },
-  colSummarySick: { width: '10%' },
-  colSummaryAnnual: { width: '10%' },
-  colSummaryHoliday: { width: '10%' },  // 공휴일 컬럼 신규
-  colSummaryUnpaid: { width: '12%' },
-
-  // 페이지 헤더 (고정 위치)
-  header: {
+  // ── 페이지 헤더 / 푸터 (고정 위치) ──
+  pageHeader: {
     position: 'absolute',
     top: 16,
     left: 40,
@@ -207,9 +95,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-
-  // 페이지 푸터 (고정 위치)
-  pageNumber: {
+  pageFooter: {
     position: 'absolute',
     bottom: 16,
     left: 40,
@@ -220,50 +106,94 @@ const styles = StyleSheet.create({
     borderTop: '0.5pt solid #E5E7EB',
     paddingTop: 4,
   },
+
+  // ── 표지 ──
+  coverPage: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  coverTitle: { fontSize: 24, textAlign: 'center', marginBottom: 8, color: '#1F2937' },
+  coverSubtitle: { fontSize: 14, textAlign: 'center', color: '#6B7280', marginBottom: 40 },
+  coverMeta: { fontSize: 10, textAlign: 'center', color: '#9CA3AF', marginTop: 8 },
+  coverDivider: { width: 80, borderBottom: '2pt solid #1F2937', marginBottom: 24, marginTop: 8 },
+
+  // ── 섹션 제목 ──
+  sectionTitle: {
+    fontSize: 12,
+    marginBottom: 10,
+    color: '#1F2937',
+    borderBottom: '1pt solid #E5E7EB',
+    paddingBottom: 4,
+  },
+
+  // ── 테이블 공통 행 ──
+  tHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: '#374151',
+    padding: 5,
+  },
+  tRow: {
+    flexDirection: 'row',
+    borderBottom: '0.5pt solid #E5E7EB',
+    padding: 4,
+  },
+  tRowAlt: {
+    flexDirection: 'row',
+    borderBottom: '0.5pt solid #E5E7EB',
+    padding: 4,
+    backgroundColor: '#F9FAFB',
+  },
+  tRowTotal: {
+    flexDirection: 'row',
+    borderBottom: '0.5pt solid #E5E7EB',
+    padding: 4,
+    backgroundColor: '#F3F4F6',
+  },
+  // DailyGrid 행 색상
+  tRowHoliday: {
+    flexDirection: 'row',
+    borderBottom: '0.5pt solid #E5E7EB',
+    padding: 4,
+    backgroundColor: '#FEF3C7',  // 노랑
+  },
+  tRowSaturday: {
+    flexDirection: 'row',
+    borderBottom: '0.5pt solid #E5E7EB',
+    padding: 4,
+    backgroundColor: '#EFF6FF',  // 연파랑
+  },
+  tRowSunday: {
+    flexDirection: 'row',
+    borderBottom: '0.5pt solid #E5E7EB',
+    padding: 4,
+    backgroundColor: '#FEF2F2',  // 연빨강
+  },
+
+  // ── 셀 텍스트 ──
+  cellText: { fontSize: 8, color: '#374151' },
+  cellTextBlue: { fontSize: 8, color: '#1D4ED8' },
+  cellTextBold: { fontSize: 8, color: '#1F2937' },
+  headerCellText: { fontSize: 8, color: '#FFFFFF' },
+
+  // ── SummaryTable 컬럼 너비 (8컬럼, 합계 100%) ──
+  sColName:       { width: '13%' },
+  sColWorkDays:   { width: '11%' },
+  sColSick:       { width: '10%' },
+  sColAnnual:     { width: '10%' },
+  sColHoliday:    { width: '10%' },
+  sColUnpaid:     { width: '10%' },
+  sColWorkHours:  { width: '18%' },
+  // 총 근무시간 열: 데이터 셀은 파란 배경
+  sColTotal:      { width: '18%' },
+  sColTotalData:  { width: '18%', backgroundColor: '#EFF6FF', color: '#1D4ED8', fontSize: 8 },
 })
-
-// ===== 컴포넌트 Props 타입 =====
-
-interface ReportDocumentProps {
-  startDate: string             // YYYY-MM-DD
-  endDate: string               // YYYY-MM-DD
-  sortedUsers: UserReportEntry[] // 가나다순 정렬된 직원별 집계
-  holidayMap: Map<string, string> // date → 공휴일명 Map
-  generatedAt: string           // ISO 8601 생성 시각
-}
-
-// ===== 상세 행 타입 =====
-interface DetailRow {
-  date: string           // YYYY-MM-DD
-  dayOfWeek: string      // 요일 (한국어 1글자)
-  status: string         // 표시용 상태명
-  totalHours: string | null // "X시간 Y분" 형식 또는 null
-  location: string | null
-  description: string
-  isHoliday: boolean
-}
 
 // ===== 유틸 함수 =====
 
-/**
- * UTC ISO 8601 시각을 NZT(뉴질랜드 표준시) 기준 HH:mm 표시 형식으로 변환
- * @param isoStr ISO 8601 UTC 문자열
- * @returns "HH:mm" 형식
- */
-function formatTimeDisplay(isoStr: string | null): string {
-  if (!isoStr) return '-'
-  try {
-    return formatInTimeZone(new Date(isoStr), 'Pacific/Auckland', 'HH:mm')
-  } catch {
-    return '-'
-  }
+/** YYYY-MM-DD → "YYYY년 MM월 DD일" */
+function formatDateDisplay(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-')
+  return `${y}년 ${m}월 ${d}일`
 }
 
-/**
- * 생성 일시 ISO 문자열을 NZT(뉴질랜드 표준시) 기준 "YYYY년 MM월 DD일" 형식으로 변환
- * @param isoStr ISO 8601 문자열
- * @returns "YYYY년 MM월 DD일" 형식
- */
+/** ISO 8601 → NZT(뉴질랜드 표준시) 기준 "YYYY년 MM월 DD일" */
 function formatGeneratedAt(isoStr: string): string {
   try {
     return formatInTimeZone(new Date(isoStr), 'Pacific/Auckland', 'yyyy년 MM월 dd일')
@@ -273,107 +203,64 @@ function formatGeneratedAt(isoStr: string): string {
 }
 
 /**
- * YYYY-MM-DD를 "YYYY년 MM월 DD일" 형식으로 변환
- * @param dateStr YYYY-MM-DD
- * @returns "YYYY년 MM월 DD일"
+ * DailyGrid 시간 표시 — 정수면 정수, 소수면 소수점 1자리
+ * web DailyGrid.tsx의 formatHours 함수와 동일 로직
  */
-function formatDateDisplay(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-')
-  return `${y}년 ${m}월 ${d}일`
+function formatHours(hours: number): string {
+  if (Number.isInteger(hours)) return hours.toString()
+  return hours.toFixed(1)
 }
 
 /**
- * 기록 배열과 공휴일 맵에서 상세 행 배열 구성
- * startDate ~ endDate 전체 날짜 순회 (기록 없는 날도 포함)
- * NF-V2-003: 공휴일 행은 holidayMap에서 조회하여 삽입
- *
- * @param records - 해당 직원의 업무 기록 배열 (YYYY-MM-DD date 필드)
- * @param holidayMap - date(YYYY-MM-DD) → 공휴일명 Map
- * @param startDate - YYYY-MM-DD
- * @param endDate - YYYY-MM-DD
- * @returns 날짜 오름차순 정렬된 DetailRow 배열
+ * DailyGrid 비고 생성 — web DailyGrid.tsx의 generateRemark 함수와 동일 로직
+ * 우선순위: 공휴일명 > 토/일요일 > 특이상태 직원 목록
  */
-function buildDetailRows(
-  records: WorkRecordDTO[],
-  holidayMap: Map<string, string>,
-  startDate: string,
-  endDate: string
-): DetailRow[] {
-  // 날짜 → 기록 Map (빠른 조회용)
-  const recordDateMap = new Map<string, WorkRecordDTO>()
-  for (const r of records) {
-    recordDateMap.set(r.date, r)
-  }
+function generateRemark(
+  day: DayData,
+  employees: Array<{ id: string; name: string }>
+): string {
+  // 1. 공휴일 우선
+  if (day.isHoliday && day.holidayName) return day.holidayName
 
-  const rows: DetailRow[] = []
+  const remarks: string[] = []
 
-  // startDate ~ endDate 전체 날짜 순회
-  const start = new Date(`${startDate}T00:00:00Z`)
-  const end = new Date(`${endDate}T00:00:00Z`)
-  const current = new Date(start)
+  // 2. 토/일요일
+  if (day.dayOfWeek === 6) remarks.push('토요일')
+  else if (day.dayOfWeek === 0) remarks.push('일요일')
 
-  while (current <= end) {
-    const dateStr = current.toISOString().slice(0, 10)
-    const dayOfWeek = getDayOfWeekKo(dateStr)
-    const isHoliday = holidayMap.has(dateStr)
-    const record = recordDateMap.get(dateStr)
+  // 3. 특이 상태 직원 (SICK / ANNUAL / UNPAID)
+  const specials = employees
+    .filter(emp => {
+      const rec = day.records[emp.id]
+      return rec && ['SICK', 'ANNUAL', 'UNPAID'].includes(rec.status)
+    })
+    .map(emp => {
+      const status = day.records[emp.id].status
+      const label = status === 'SICK' ? '병가' : status === 'ANNUAL' ? '연차' : '무급'
+      return `${emp.name} ${label}`
+    })
 
-    if (record) {
-      // 기록 있는 날
-      rows.push({
-        date: dateStr,
-        dayOfWeek,
-        status: STATUS_LABEL[record.status] ?? record.status,
-        totalHours: record.totalHours != null ? formatHoursToDisplay(record.totalHours) : null,
-        location: record.location,
-        description: record.description ?? '-',
-        isHoliday,
-      })
-    } else if (isHoliday) {
-      // 기록 없는 공휴일 (NF-V2-003)
-      const holidayName = holidayMap.get(dateStr)!
-      rows.push({
-        date: dateStr,
-        dayOfWeek,
-        status: `공휴일 (${holidayName})`,
-        totalHours: null,
-        location: null,
-        description: '-',
-        isHoliday: true,
-      })
-    }
-    // 기록 없는 평일은 표시하지 않음 (상세 테이블 간소화)
-
-    // 하루 증가
-    current.setUTCDate(current.getUTCDate() + 1)
-  }
-
-  return rows
+  remarks.push(...specials)
+  return remarks.join(', ')
 }
 
 // ===== 서브 컴포넌트 =====
 
-/**
- * 페이지 공통 헤더 — 고정 위치 (absolute)
- */
+/** 페이지 공통 헤더 — 고정 위치 (absolute) */
 function PageHeader({ startDate, endDate }: { startDate: string; endDate: string }) {
   return (
-    <View style={styles.header} fixed>
+    <View style={styles.pageHeader} fixed>
       <Text>JunFire Protection 업무 기록 보고서</Text>
-      <Text>
-        {startDate} ~ {endDate}
-      </Text>
+      <Text>{startDate} ~ {endDate}</Text>
     </View>
   )
 }
 
-/**
- * 페이지 공통 푸터 (페이지 번호) — 고정 위치 (absolute)
- */
+/** 페이지 공통 푸터 (페이지 번호) — 고정 위치 (absolute) */
 function PageFooter() {
   return (
     <Text
-      style={styles.pageNumber}
+      style={styles.pageFooter}
       render={({ pageNumber, totalPages }: { pageNumber: number; totalPages: number }) =>
         `${pageNumber} / ${totalPages}`
       }
@@ -382,9 +269,7 @@ function PageFooter() {
   )
 }
 
-/**
- * 표지 페이지 컴포넌트
- */
+/** 표지 페이지 컴포넌트 */
 function CoverPage({
   startDate,
   endDate,
@@ -400,150 +285,196 @@ function CoverPage({
       <View style={styles.coverDivider} />
       <Text style={styles.coverSubtitle}>업무 기록 보고서</Text>
       <Text style={styles.coverMeta}>
-        기간: {formatDateDisplay(startDate)} ~ {formatDateDisplay(endDate)}
+        {`기간: ${formatDateDisplay(startDate)} ~ ${formatDateDisplay(endDate)}`}
       </Text>
-      <Text style={styles.coverMeta}>생성일: {formatGeneratedAt(generatedAt)}</Text>
+      <Text style={styles.coverMeta}>{`생성일: ${formatGeneratedAt(generatedAt)}`}</Text>
     </View>
   )
 }
 
 /**
- * 전직원 집계 요약 테이블 — 2페이지
+ * 직원별 집계 테이블 PDF 컴포넌트
+ * web SummaryTable.tsx와 동일한 컬럼 구성:
+ * 직원 / 정상근무(일) / 병가(일) / 연차(일) / 공휴일(일) / 무급(일) / 정상근무 실시간 / 총 근무시간
+ * 직원 2명 이상일 때 하단 합계 행 표시
  */
-function SummaryTable({ users }: { users: UserReportEntry[] }) {
+function PdfSummarySection({ summary }: { summary: EmployeeSummaryDTO[] }) {
+  // 합계 계산 (직원 2명 이상일 때 표시)
+  const totals = {
+    workDays:       summary.reduce((s, r) => s + r.workDays, 0),
+    sickDays:       summary.reduce((s, r) => s + r.sickDays, 0),
+    annualDays:     summary.reduce((s, r) => s + r.annualDays, 0),
+    holidayDays:    summary.reduce((s, r) => s + r.holidayDays, 0),
+    unpaidDays:     summary.reduce((s, r) => s + r.unpaidDays, 0),
+    workActualHours: Math.round(summary.reduce((s, r) => s + r.workActualHours, 0) * 10) / 10,
+    totalHours:      Math.round(summary.reduce((s, r) => s + r.totalHours, 0) * 10) / 10,
+  }
+
   return (
     <View>
-      <Text style={styles.summaryTitle}>직원별 집계 요약</Text>
+      <Text style={styles.sectionTitle}>직원별 집계</Text>
 
-      {/* 테이블 헤더 */}
-      <View style={styles.summaryTableHeader}>
-        <Text style={[styles.summaryHeaderText, styles.colSummaryName]}>직원명</Text>
-        <Text style={[styles.summaryHeaderText, styles.colSummaryRole]}>직책</Text>
-        <Text style={[styles.summaryHeaderText, styles.colSummaryWorkDays]}>근무일수</Text>
-        <Text style={[styles.summaryHeaderText, styles.colSummaryWorkHours]}>총 근무시간</Text>
-        <Text style={[styles.summaryHeaderText, styles.colSummarySick]}>병가</Text>
-        <Text style={[styles.summaryHeaderText, styles.colSummaryAnnual]}>연차</Text>
-        <Text style={[styles.summaryHeaderText, styles.colSummaryHoliday]}>공휴일</Text>
-        <Text style={[styles.summaryHeaderText, styles.colSummaryUnpaid]}>무급</Text>
+      {/* 헤더 행 */}
+      <View style={styles.tHeaderRow}>
+        <Text style={[styles.headerCellText, styles.sColName]}>직원</Text>
+        <Text style={[styles.headerCellText, styles.sColWorkDays]}>정상근무(일)</Text>
+        <Text style={[styles.headerCellText, styles.sColSick]}>병가(일)</Text>
+        <Text style={[styles.headerCellText, styles.sColAnnual]}>연차(일)</Text>
+        <Text style={[styles.headerCellText, styles.sColHoliday]}>공휴일(일)</Text>
+        <Text style={[styles.headerCellText, styles.sColUnpaid]}>무급(일)</Text>
+        <Text style={[styles.headerCellText, styles.sColWorkHours]}>정상근무 실시간</Text>
+        <Text style={[styles.headerCellText, styles.sColTotal]}>총 근무시간</Text>
       </View>
 
-      {/* 테이블 본문 */}
-      {users.map((entry, idx) => {
-        const isAlt = idx % 2 === 1
-        const rowStyle = isAlt ? styles.summaryTableRowAlt : styles.summaryTableRow
-        const roleLabel = RoleLabel[entry.user.role] ?? entry.user.role
-
+      {/* 직원별 데이터 행 */}
+      {summary.map((row, idx) => {
+        const rowStyle = idx % 2 === 1 ? styles.tRowAlt : styles.tRow
         return (
-          <View key={entry.user.id} style={rowStyle}>
-            <Text style={styles.colSummaryName}>{entry.user.name}</Text>
-            <Text style={styles.colSummaryRole}>{roleLabel}</Text>
-            <Text style={styles.colSummaryWorkDays}>{entry.totalWorkDays}일</Text>
-            <Text style={styles.colSummaryWorkHours}>
-              {entry.totalWorkHours > 0 ? formatHoursToDisplay(entry.totalWorkHours) : '-'}
+          <View key={row.userId} style={rowStyle}>
+            <Text style={[styles.cellText, styles.sColName]}>{row.name}</Text>
+            <Text style={[styles.cellText, styles.sColWorkDays]}>
+              {row.workDays > 0 ? `${row.workDays}일` : '-'}
             </Text>
-            <Text style={styles.colSummarySick}>{entry.sickDays}일</Text>
-            <Text style={styles.colSummaryAnnual}>{entry.annualDays}일</Text>
-            <Text style={styles.colSummaryHoliday}>{entry.holidayDays}일</Text>
-            <Text style={styles.colSummaryUnpaid}>{entry.unpaidDays}일</Text>
+            <Text style={[styles.cellText, styles.sColSick]}>
+              {row.sickDays > 0 ? `${row.sickDays}일` : '-'}
+            </Text>
+            <Text style={[styles.cellText, styles.sColAnnual]}>
+              {row.annualDays > 0 ? `${row.annualDays}일` : '-'}
+            </Text>
+            <Text style={[styles.cellText, styles.sColHoliday]}>
+              {row.holidayDays > 0 ? `${row.holidayDays}일` : '-'}
+            </Text>
+            <Text style={[styles.cellText, styles.sColUnpaid]}>
+              {row.unpaidDays > 0 ? `${row.unpaidDays}일` : '-'}
+            </Text>
+            <Text style={[styles.cellText, styles.sColWorkHours]}>
+              {row.workActualHours > 0 ? formatHoursToDisplay(row.workActualHours) : '-'}
+            </Text>
+            {/* 총 근무시간: 파란 배경 + 파란 텍스트 (SummaryTable.tsx bg-blue-50 text-blue-700 동일) */}
+            <Text style={styles.sColTotalData}>
+              {formatHoursToDisplay(row.totalHours)}
+            </Text>
           </View>
         )
       })}
-    </View>
-  )
-}
 
-/**
- * 직원별 상세 기록 테이블 컴포넌트
- * startDate ~ endDate 전체 날짜 순회 (buildDetailRows 사용)
- */
-function DetailTable({
-  records,
-  holidayMap,
-  startDate,
-  endDate,
-}: {
-  records: WorkRecordDTO[]
-  holidayMap: Map<string, string>
-  startDate: string
-  endDate: string
-}) {
-  const rows = buildDetailRows(records, holidayMap, startDate, endDate)
-
-  return (
-    <View>
-      {/* 테이블 헤더 */}
-      <View style={styles.tableHeader}>
-        <Text style={[styles.tableHeaderText, styles.colDate]}>날짜</Text>
-        <Text style={[styles.tableHeaderText, styles.colDay]}>요일</Text>
-        <Text style={[styles.tableHeaderText, styles.colStatus]}>상태</Text>
-        <Text style={[styles.tableHeaderText, styles.colHours]}>근무시간</Text>
-        <Text style={[styles.tableHeaderText, styles.colLocation]}>업무장소</Text>
-        <Text style={[styles.tableHeaderText, styles.colDescription]}>업무내용</Text>
-      </View>
-
-      {/* 기록 없을 때 안내 */}
-      {rows.length === 0 && (
-        <View style={styles.tableRow}>
-          <Text style={{ fontSize: 9, color: '#9CA3AF', padding: 4 }}>
-            기간 내 기록이 없습니다.
+      {/* 합계 행 (직원 2명 이상) */}
+      {summary.length > 1 && (
+        <View style={styles.tRowTotal}>
+          <Text style={[styles.cellTextBold, styles.sColName]}>합계</Text>
+          <Text style={[styles.cellTextBold, styles.sColWorkDays]}>{totals.workDays}일</Text>
+          <Text style={[styles.cellTextBold, styles.sColSick]}>{totals.sickDays}일</Text>
+          <Text style={[styles.cellTextBold, styles.sColAnnual]}>{totals.annualDays}일</Text>
+          <Text style={[styles.cellTextBold, styles.sColHoliday]}>{totals.holidayDays}일</Text>
+          <Text style={[styles.cellTextBold, styles.sColUnpaid]}>{totals.unpaidDays}일</Text>
+          <Text style={[styles.cellTextBold, styles.sColWorkHours]}>
+            {formatHoursToDisplay(totals.workActualHours)}
           </Text>
+          <Text style={styles.sColTotalData}>{formatHoursToDisplay(totals.totalHours)}</Text>
         </View>
       )}
-
-      {/* 테이블 본문 */}
-      {rows.map((row, idx) => {
-        // 공휴일 행 → 노란 배경, 짝수 행 → 연회색 배경
-        const rowStyle = row.isHoliday
-          ? styles.tableRowHoliday
-          : idx % 2 === 1
-          ? styles.tableRowAlt
-          : styles.tableRow
-
-        return (
-          <View key={`${row.date}-${idx}`} style={rowStyle}>
-            <Text style={styles.colDate}>{row.date}</Text>
-            <Text style={styles.colDay}>{row.dayOfWeek}</Text>
-            <Text style={styles.colStatus}>{row.status}</Text>
-            <Text style={styles.colHours}>{row.totalHours ?? '-'}</Text>
-            <Text style={styles.colLocation}>{row.location ?? '-'}</Text>
-            <Text style={styles.colDescription}>{row.description}</Text>
-          </View>
-        )
-      })}
     </View>
   )
 }
 
 /**
- * 직원 섹션 헤더 + 집계 요약 행 컴포넌트
+ * 날짜별 상세 기록 크로스 테이블 PDF 컴포넌트
+ * web DailyGrid.tsx와 동일한 구조:
+ * - 열: 근무일 / 직원1 / 직원2 / ... / 비고
+ * - 행: 날짜별 (전체 기간)
+ * - 하단: 직원별 총 근무시간 합계 행
+ * - 행 색상: 공휴일=노랑, 토요일=연파랑, 일요일=연빨강, 교대=흰/연회색
  */
-function UserSectionHeader({ entry }: { entry: UserReportEntry }) {
-  const roleLabel = RoleLabel[entry.user.role] ?? entry.user.role
+function PdfDailyGridSection({ dailyGrid }: { dailyGrid: DailyGridData }) {
+  const { employees, days } = dailyGrid
+
+  // 동적 컬럼 너비 계산 (A4 portrait 기준)
+  // 근무일: 14%, 비고: 18%, 나머지를 직원 수로 균등 분배
+  const dateColW = '14%'
+  const remarkColW = '18%'
+  const empRemainingPct = 100 - 14 - 18
+  const empColW = employees.length > 0
+    ? `${(empRemainingPct / employees.length).toFixed(1)}%`
+    : `${empRemainingPct}%`
+
+  // 직원별 합계 시간 계산
+  const empTotalHours: Record<string, number> = {}
+  employees.forEach(emp => { empTotalHours[emp.id] = 0 })
+  days.forEach(day => {
+    Object.entries(day.records).forEach(([uid, rec]) => {
+      if (empTotalHours[uid] !== undefined) {
+        empTotalHours[uid] += rec.hours
+      }
+    })
+  })
+
+  /**
+   * 날짜 행 스타일 결정 — DailyGrid.tsx getRowStyle 동일 로직
+   * 공휴일 > 토요일 > 일요일 > 짝수/홀수 교대
+   */
+  function getRowStyle(day: DayData, idx: number) {
+    if (day.isHoliday) return styles.tRowHoliday
+    if (day.dayOfWeek === 6) return styles.tRowSaturday
+    if (day.dayOfWeek === 0) return styles.tRowSunday
+    return idx % 2 === 0 ? styles.tRow : styles.tRowAlt
+  }
 
   return (
     <View>
-      {/* 직원 이름 + 직책 */}
-      <Text style={styles.sectionHeader}>
-        {entry.user.name} ({roleLabel})
-      </Text>
+      <Text style={styles.sectionTitle}>날짜별 상세 기록</Text>
 
-      {/* 집계 요약 행 — nested <Text> 완전 제거 (react-pdf v3 React error #31 방지) */}
-      <View style={styles.summaryRow}>
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>{`총 근무일: ${entry.totalWorkDays}일`}</Text>
+      {/* 헤더 행 */}
+      <View style={styles.tHeaderRow}>
+        <Text style={[styles.headerCellText, { width: dateColW }]}>근무일</Text>
+        {employees.map(emp => (
+          <Text key={emp.id} style={[styles.headerCellText, { width: empColW }]}>
+            {emp.name}
+          </Text>
+        ))}
+        <Text style={[styles.headerCellText, { width: remarkColW }]}>비고</Text>
+      </View>
+
+      {/* 날짜별 데이터 행 */}
+      {days.map((day, idx) => (
+        <View key={day.date} style={getRowStyle(day, idx)}>
+          {/* 날짜 셀 (YYYY/MM/DD 형식 — DailyGrid.tsx 동일) */}
+          <Text style={[styles.cellText, { width: dateColW }]}>
+            {day.date.replace(/-/g, '/')}
+          </Text>
+          {/* 직원별 근무시간 셀 */}
+          {employees.map(emp => {
+            const rec = day.records[emp.id]
+            return (
+              <Text
+                key={emp.id}
+                style={[styles.cellText, { width: empColW, textAlign: 'center' }]}
+              >
+                {rec ? formatHours(rec.hours) : '0'}
+              </Text>
+            )
+          })}
+          {/* 비고 셀 */}
+          <Text style={[styles.cellText, { width: remarkColW, fontSize: 7 }]}>
+            {generateRemark(day, employees)}
+          </Text>
         </View>
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>{`총 근무시간: ${entry.totalWorkHours > 0 ? formatHoursToDisplay(entry.totalWorkHours) : '-'}`}</Text>
-        </View>
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>{`병가: ${entry.sickDays}일`}</Text>
-        </View>
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>{`연차: ${entry.annualDays}일`}</Text>
-        </View>
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>{`무급: ${entry.unpaidDays}일`}</Text>
-        </View>
+      ))}
+
+      {/* 합계 행 */}
+      <View style={styles.tRowTotal}>
+        <Text style={[styles.cellTextBold, { width: dateColW }]}>총 근무시간</Text>
+        {employees.map(emp => {
+          const h = Math.round((empTotalHours[emp.id] ?? 0) * 10) / 10
+          return (
+            <Text
+              key={emp.id}
+              style={[styles.cellTextBold, { width: empColW, textAlign: 'center' }]}
+            >
+              {formatHours(h)}
+            </Text>
+          )
+        })}
+        <Text style={{ width: remarkColW }} />
       </View>
     </View>
   )
@@ -556,14 +487,14 @@ function UserSectionHeader({ entry }: { entry: UserReportEntry }) {
  *
  * 구조:
  * - 1페이지: 표지 (회사명, 보고서 제목, 기간, 생성일)
- * - 2페이지: 전직원 집계 요약 테이블 (가나다순)
- * - 3페이지~: 직원별 상세 기록 테이블 (직원당 새 페이지)
+ * - 2페이지: 직원별 집계 (SummaryTable.tsx 동일 컬럼 구조)
+ * - 3페이지~: 날짜별 상세 기록 (DailyGrid.tsx 동일 크로스 테이블 구조)
  */
 export function ReportDocument({
   startDate,
   endDate,
-  sortedUsers,
-  holidayMap,
+  summary,
+  dailyGrid,
   generatedAt,
 }: ReportDocumentProps) {
   return (
@@ -572,52 +503,41 @@ export function ReportDocument({
       author="JunFire Protection"
       creator="JunFire Protection 시스템"
     >
-      {/* 1페이지: 표지 (헤더/푸터 없음) */}
-      <Page size="A4" style={{ ...styles.page, paddingTop: 40 }}>
-        <CoverPage
-          startDate={startDate}
-          endDate={endDate}
-          generatedAt={generatedAt}
-        />
+      {/* 1페이지: 표지 (헤더 없음) */}
+      <Page size="A4" style={styles.pageNoPadTop}>
+        <CoverPage startDate={startDate} endDate={endDate} generatedAt={generatedAt} />
         <PageFooter />
       </Page>
 
-      {/* 2페이지: 전직원 집계 요약 */}
+      {/* 2페이지: 직원별 집계 */}
       <Page size="A4" style={styles.page}>
         <PageHeader startDate={startDate} endDate={endDate} />
-        <SummaryTable users={sortedUsers} />
+        <PdfSummarySection summary={summary} />
         <PageFooter />
       </Page>
 
-      {/* 3페이지~: 직원별 상세 기록 (직원당 새 페이지) */}
-      {sortedUsers.map(entry => (
-        <Page key={entry.user.id} size="A4" style={styles.page}>
-          <PageHeader startDate={startDate} endDate={endDate} />
-          <UserSectionHeader entry={entry} />
-          <DetailTable
-            records={entry.records}
-            holidayMap={holidayMap}
-            startDate={startDate}
-            endDate={endDate}
-          />
-          <PageFooter />
-        </Page>
-      ))}
+      {/* 3페이지~: 날짜별 상세 기록 (내용이 많으면 자동 페이지 분리) */}
+      <Page size="A4" style={styles.page}>
+        <PageHeader startDate={startDate} endDate={endDate} />
+        <PdfDailyGridSection dailyGrid={dailyGrid} />
+        <PageFooter />
+      </Page>
     </Document>
   )
 }
 
 /**
- * JSX 컨텍스트에서 PDF 버퍼 생성 — .tsx 파일에서 호출해야 React element 타입 정합성 보장
+ * JSX 컨텍스트에서 PDF 버퍼 생성
  * generateReport.ts (JSX 없는 .ts)에서 React.createElement 직접 호출 시 reconciler 오류 방지
+ * — .tsx 파일에서만 JSX transform이 보장됨
  */
 export async function renderReportDocument(props: ReportDocumentProps): Promise<Buffer> {
   const pdfBuffer = await renderToBuffer(
     <ReportDocument
       startDate={props.startDate}
       endDate={props.endDate}
-      sortedUsers={props.sortedUsers}
-      holidayMap={props.holidayMap}
+      summary={props.summary}
+      dailyGrid={props.dailyGrid}
       generatedAt={props.generatedAt}
     />
   )

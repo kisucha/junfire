@@ -101,6 +101,31 @@
 
 ---
 
+### 이슈 #8 완료 — PDF 내용 변경: 보고서 페이지 형식 그대로 PDF 출력 (2026-05-25)
+
+**요청 사항**
+- PDF 내용을 관리자 보고서 페이지(직원별 집계 + 날짜별 상세 기록)와 동일하게 변경
+
+**변경 내용**
+
+`src/lib/pdf/ReportDocument.tsx` 전면 재작성:
+- 기존: 직원별 개별 상세 테이블 (직원당 1페이지)
+- 신규: 직원별 집계(SummaryTable) + 날짜별 상세 기록(DailyGrid 크로스 테이블)
+- `PdfSummarySection`: SummaryTable.tsx와 동일한 8컬럼 + 합계 행(직원 2명 이상)
+- `PdfDailyGridSection`: DailyGrid.tsx와 동일한 크로스 테이블, 동적 열 너비, 비고 로직
+- `DailyRecord`, `DayData`, `DailyGridData` 타입 export — 순환 의존성 제거
+
+`src/lib/pdf/generateReport.ts` 전면 재작성:
+- `generateReportFromDB` 단일 함수로 통합
+- DB 단일 조회(employees, workRecords, holidays)로 summary + dailyGrid 동시 계산
+- summary/route.ts, report/daily/route.ts 로직과 완전 동일한 집계 규칙 적용
+
+**검증**
+- TypeScript 타입체크: 오류 없음 ✅
+- PDF 생성 테스트 (port 9955): 성공 ✅ (23,433 bytes)
+
+---
+
 ## 2026-05-18
 
 ### CLAUDE.md 생성 (V1 → V2)

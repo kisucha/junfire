@@ -1,143 +1,24 @@
 // src/lib/pdf/generateReport.ts — PDF 생성 진입점 (데이터 가공 + 렌더링)
-// 목적: 기간 내 전직원 업무 기록 조회, 직원별 집계, @react-pdf/renderer 버퍼 반환
+// 목적: 기간 내 전직원 업무 기록 조회, 직원별 집계(SummaryTable) + 날짜별 상세(DailyGrid) 형식 PDF 생성
 // @react-pdf/renderer 서버사이드 전용 — 클라이언트 컴포넌트에서 import 금지
 
 import { prisma } from '@/lib/prisma'
-import { formatHoursToDisplay } from '@/lib/utils/time'
-// formatDateKo, getDayOfWeekKo는 ReportDocument.tsx에서 직접 사용
-import type { WorkRecordDTO, HolidayDTO, GenerateReportInput, Role, RecordStatus } from '@/types'
-// renderToBuffer는 ReportDocument.tsx (JSX 파일)에서 직접 호출 — .ts에서 React.createElement 사용 시 reconciler 오류
+import type { EmployeeSummaryDTO, GenerateReportInput } from '@/types'
+// renderReportDocument 와 DailyGrid 타입은 ReportDocument.tsx에서 import — 순환 의존성 없음
 import { renderReportDocument } from './ReportDocument'
+import type { DailyRecord, DayData, DailyGridData } from './ReportDocument'
 
-// ===== 내부 집계 타입 =====
-
-// 직원별 집계 결과 타입 — ReportDocument에 전달
-export interface UserReportEntry {
-  // 직원 기본 정보
-  user: {
-    id: string
-    name: string
-    username: string
-    role: Role
-  }
-  // 집계 수치
-  totalWorkDays: number   // WORK 상태 일수
-  totalWorkHours: number  // 총 근무시간 합산 (float)
-  sickDays: number        // 병가 일수
-  annualDays: number      // 연차 일수
-  unpaidDays: number      // 무급 일수
-  holidayDays: number     // 공휴일 일수 (WorkRecord에 HOLIDAY 기록이 있는 경우)
-  // 날짜별 상세 기록 (날짜 오름차순 정렬)
-  records: WorkRecordDTO[]
-}
-
-// PDF 생성 함수 파라미터 타입 — API Route에서 직접 데이터 주입 방식과
-// DB 조회 방식 모두 지원 (오버로드 없이 단일 함수)
-export type GenerateReportParams = {
-  startDate: string  // YYYY-MM-DD
-  endDate: string    // YYYY-MM-DD
-}
-
-// ===== PDF 생성 진입점 =====
+// re-export: 다른 모듈에서 DailyGridData 등이 필요할 경우 사용 가능
+export type { DailyRecord, DayData, DailyGridData }
 
 /**
- * 기간 내 전직원 업무 기록 조회 후 PDF 버퍼 반환
- * [M-011] PDF 생성은 전체 로드 (페이징 없음) — 5명 소규모 수백 건 수준으로 timeout 위험 없음
+ * DB에서 직접 조회하여 PDF 생성하는 진입점
+ * 직원별 집계(SummaryTable) + 날짜별 상세(DailyGrid) 형식으로 PDF 구성
  *
- * @param records - JOIN된 사용자 정보 포함 업무 기록 배열
- * @param holidays - 기간 내 공휴일 배열
- * @param params - 기간 파라미터 (startDate, endDate)
- * @returns PDF 파일 Buffer
- */
-export async function generateReportPDF(
-  records: (WorkRecordDTO & { user: { id: string; name: string; username: string; role: string } })[],
-  holidays: HolidayDTO[],
-  params: GenerateReportParams
-): Promise<Buffer> {
-  const { startDate, endDate } = params
-
-  // --- 1. holidayMap 생성 (NF-V2-003) ---
-  // date(YYYY-MM-DD) → 공휴일명 Map — 상세 테이블에서 O(1) 조회
-  const holidayMap = new Map<string, string>()
-  for (const h of holidays) {
-    holidayMap.set(h.date, h.name)
-  }
-
-  // --- 2. userId 기준 직원별 기록 그룹화 ---
-  const userMap = new Map<string, UserReportEntry>()
-
-  for (const record of records) {
-    const uid = record.userId
-
-    if (!userMap.has(uid)) {
-      // 최초 등장 시 초기 집계 엔트리 생성
-      userMap.set(uid, {
-        user: {
-          id: uid,
-          name: record.user.name,
-          username: record.user.username,
-          role: record.user.role as Role,
-        },
-        totalWorkDays: 0,
-        totalWorkHours: 0,
-        sickDays: 0,
-        annualDays: 0,
-        unpaidDays: 0,
-        holidayDays: 0,
-        records: [],
-      })
-    }
-
-    const entry = userMap.get(uid)!
-
-    // 기록 추가
-    entry.records.push(record)
-
-    // --- 3. 직원별 집계 계산 ---
-    const status = record.status as RecordStatus
-    if (status === 'WORK') {
-      entry.totalWorkDays++
-      entry.totalWorkHours += record.totalHours ?? 0
-    } else if (status === 'SICK') {
-      entry.sickDays++
-    } else if (status === 'ANNUAL') {
-      entry.annualDays++
-    } else if (status === 'UNPAID') {
-      entry.unpaidDays++
-    } else if (status === 'HOLIDAY') {
-      // 공휴일 기록이 WorkRecord에 직접 등록된 경우 집계 (Holiday 테이블과 별개)
-      entry.holidayDays++
-    }
-  }
-
-  // --- 4. 직원 가나다순 정렬 ---
-  const sortedUsers = Array.from(userMap.values()).sort((a, b) =>
-    a.user.name.localeCompare(b.user.name, 'ko')
-  )
-
-  // --- 5. 총 근무시간 소수점 2자리 반올림 ---
-  for (const entry of sortedUsers) {
-    entry.totalWorkHours = Math.round(entry.totalWorkHours * 100) / 100
-  }
-
-  // --- 6. @react-pdf/renderer로 PDF 버퍼 생성 ---
-  // renderReportDocument (ReportDocument.tsx의 .tsx 함수) 호출 — JSX transform 보장
-  // .ts에서 React.createElement 직접 호출 시 reconciler 타입 불일치로 React error #31 발생
-  const pdfBuffer = await renderReportDocument({
-    startDate,
-    endDate,
-    sortedUsers,
-    holidayMap,
-    generatedAt: new Date().toISOString(),
-  })
-
-  return pdfBuffer
-}
-
-/**
- * DB에서 직접 조회하여 PDF 생성하는 편의 함수
- * API Route /api/admin/report 에서 사용
- * GenerateReportInput의 includeInactive 플래그 반영
+ * 내부 로직:
+ *  - 직원 목록 / 업무 기록 / 공휴일 을 한 번에 조회
+ *  - summary: /api/admin/summary 와 동일한 집계 규칙 (WORK=실시간, SICK/ANNUAL/HOLIDAY=8h, UNPAID=0)
+ *  - dailyGrid: /api/admin/report/daily 와 동일한 날짜별 구성 규칙
  *
  * @param input - GenerateReportInput (startDate, endDate, includeInactive)
  * @returns PDF 파일 Buffer
@@ -145,61 +26,144 @@ export async function generateReportPDF(
 export async function generateReportFromDB(input: GenerateReportInput): Promise<Buffer> {
   const { startDate, endDate, includeInactive } = input
 
-  // UTC 기준 날짜 범위 (WorkRecord.date는 YYYY-MM-DDT00:00:00Z 형식으로 저장됨)
   const startDateTime = new Date(`${startDate}T00:00:00Z`)
   const endDateTime = new Date(`${endDate}T23:59:59Z`)
 
-  // 1. 기간 내 전직원 업무 기록 전체 조회 (PDF는 페이징 없이 전체 로드)
-  const rawRecords = await prisma.workRecord.findMany({
+  // ─── 1. 직원 목록 조회 (EMPLOYEE, 가나다순) ──────────────────────────────
+  const employees = await prisma.user.findMany({
+    where: {
+      role: 'EMPLOYEE',
+      ...(includeInactive ? {} : { isActive: true }),
+    },
+    select: { id: true, name: true, username: true },
+    orderBy: { name: 'asc' },
+  })
+
+  // ─── 2. 기간 내 업무 기록 전체 조회 (summary + dailyGrid 모두 활용) ────────
+  const workRecords = await prisma.workRecord.findMany({
     where: {
       date: { gte: startDateTime, lte: endDateTime },
-      // includeInactive=false이면 활성 직원만 필터링
-      ...(includeInactive ? {} : { user: { isActive: true } }),
+      userId: { in: employees.map(e => e.id) },
     },
-    include: {
-      user: {
-        select: { id: true, name: true, username: true, role: true },
-      },
-    },
+    select: { id: true, userId: true, date: true, status: true, totalHours: true },
     orderBy: [{ userId: 'asc' }, { date: 'asc' }],
   })
 
-  // 2. Holiday 테이블 별도 조회 (NF-003 — WorkRecord와 분리)
-  const rawHolidays = await prisma.holiday.findMany({
+  // ─── 3. 공휴일 조회 ──────────────────────────────────────────────────────
+  const holidays = await prisma.holiday.findMany({
     where: { date: { gte: startDateTime, lte: endDateTime } },
-    orderBy: { date: 'asc' },
+    select: { date: true, name: true },
   })
 
-  // Prisma 결과를 DTO 형식으로 변환
-  const records = rawRecords.map(r => ({
-    id: r.id,
-    userId: r.userId,
-    date: r.date.toISOString().slice(0, 10),  // YYYY-MM-DD
-    status: r.status as RecordStatus,
-    startTime: r.startTime?.toISOString() ?? null,
-    endTime: r.endTime?.toISOString() ?? null,
-    totalHours: r.totalHours ?? null,
-    location: r.location ?? null,
-    description: r.description ?? null,
-    createdBy: r.createdBy,
-    updatedBy: r.updatedBy ?? null,
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
-    user: {
-      id: r.user.id,
-      name: r.user.name,
-      username: r.user.username,
-      role: r.user.role,
-    },
-  }))
+  // 공휴일 Map (date str → 공휴일명)
+  const holidayMap = new Map<string, string>(
+    holidays.map(h => [h.date.toISOString().slice(0, 10), h.name])
+  )
 
-  const holidays: HolidayDTO[] = rawHolidays.map(h => ({
-    id: h.id,
-    date: h.date.toISOString().slice(0, 10),
-    name: h.name,
-    createdBy: h.createdBy,
-    createdAt: h.createdAt.toISOString(),
-  }))
+  // ─── 4. 직원별 집계 계산 (SummaryTable 형식, /api/admin/summary 로직과 동일) ─
 
-  return generateReportPDF(records, holidays, { startDate, endDate })
+  // 직원별 초기 집계 맵 생성
+  const summaryMap = new Map<string, EmployeeSummaryDTO>()
+  for (const emp of employees) {
+    summaryMap.set(emp.id, {
+      userId: emp.id,
+      name: emp.name,
+      username: emp.username,
+      workDays: 0,
+      sickDays: 0,
+      annualDays: 0,
+      holidayDays: 0,
+      unpaidDays: 0,
+      workActualHours: 0,
+      totalHours: 0,
+    })
+  }
+
+  // 기록별 상태별 집계 누적
+  for (const rec of workRecords) {
+    const entry = summaryMap.get(rec.userId)
+    if (!entry) continue
+    if (rec.status === 'WORK') {
+      entry.workDays++
+      entry.workActualHours += rec.totalHours ?? 0
+    } else if (rec.status === 'SICK') {
+      entry.sickDays++
+    } else if (rec.status === 'ANNUAL') {
+      entry.annualDays++
+    } else if (rec.status === 'HOLIDAY') {
+      entry.holidayDays++
+    } else if (rec.status === 'UNPAID') {
+      entry.unpaidDays++
+    }
+  }
+
+  // 총 근무시간 계산 (SICK/ANNUAL/HOLIDAY = 8h 고정) + 소수점 1자리 반올림
+  const summary: EmployeeSummaryDTO[] = employees.map(emp => {
+    const entry = summaryMap.get(emp.id)!
+    entry.workActualHours = Math.round(entry.workActualHours * 10) / 10
+    entry.totalHours =
+      Math.round(
+        (entry.workActualHours + (entry.sickDays + entry.annualDays + entry.holidayDays) * 8) * 10
+      ) / 10
+    return entry
+  })
+
+  // ─── 5. 날짜별 상세 데이터 계산 (DailyGrid 형식, /api/admin/report/daily 로직과 동일) ─
+
+  // 근무 기록 Map (userId → date str → record)
+  type WorkRecordRaw = (typeof workRecords)[0]
+  const recordMap = new Map<string, Map<string, WorkRecordRaw>>()
+  for (const rec of workRecords) {
+    const dateStr = rec.date.toISOString().slice(0, 10)
+    if (!recordMap.has(rec.userId)) recordMap.set(rec.userId, new Map())
+    recordMap.get(rec.userId)!.set(dateStr, rec)
+  }
+
+  // startDate ~ endDate 전체 날짜 순회 → days 배열 생성
+  const days: DayData[] = []
+  const cur = new Date(startDateTime)
+
+  while (cur <= endDateTime) {
+    const dateStr = cur.toISOString().slice(0, 10)
+    const dayOfWeek = cur.getUTCDay()  // 0=일, 6=토
+    const isHoliday = holidayMap.has(dateStr)
+    const holidayName = holidayMap.get(dateStr) ?? null
+
+    // 직원별 근무시간 계산
+    const records: Record<string, DailyRecord> = {}
+    for (const emp of employees) {
+      const rec = recordMap.get(emp.id)?.get(dateStr)
+      if (!rec) continue
+      // UNPAID: 0시간 처리 (표시하지 않음) — daily route 동일 규칙
+      if (rec.status === 'UNPAID') continue
+
+      let hours = 0
+      if (rec.status === 'WORK') {
+        // WORK: 실제 근무시간 (소수점 1자리 반올림)
+        hours = Math.round((rec.totalHours ?? 0) * 10) / 10
+      } else {
+        // SICK / ANNUAL / HOLIDAY: 8시간 고정
+        hours = 8
+      }
+      records[emp.id] = { hours, status: rec.status }
+    }
+
+    days.push({ date: dateStr, dayOfWeek, isHoliday, holidayName, records })
+    cur.setUTCDate(cur.getUTCDate() + 1)
+  }
+
+  const dailyGrid: DailyGridData = {
+    employees: employees.map(e => ({ id: e.id, name: e.name })),
+    days,
+  }
+
+  // ─── 6. PDF 렌더링 ──────────────────────────────────────────────────────
+  // renderReportDocument (ReportDocument.tsx의 .tsx 함수) 호출 — JSX transform 보장
+  return renderReportDocument({
+    startDate,
+    endDate,
+    summary,
+    dailyGrid,
+    generatedAt: new Date().toISOString(),
+  })
 }
