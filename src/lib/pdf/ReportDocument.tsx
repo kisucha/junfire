@@ -526,39 +526,22 @@ function UserSectionHeader({ entry }: { entry: UserReportEntry }) {
         {entry.user.name} ({roleLabel})
       </Text>
 
-      {/* 집계 요약 행 */}
+      {/* 집계 요약 행 — nested <Text> 완전 제거 (react-pdf v3 React error #31 방지) */}
       <View style={styles.summaryRow}>
         <View style={styles.summaryItem}>
-          <Text>
-            <Text style={styles.summaryLabel}>총 근무일: </Text>
-            <Text style={styles.summaryValue}>{entry.totalWorkDays}일</Text>
-          </Text>
+          <Text style={styles.summaryLabel}>{`총 근무일: ${entry.totalWorkDays}일`}</Text>
         </View>
         <View style={styles.summaryItem}>
-          <Text>
-            <Text style={styles.summaryLabel}>총 근무시간: </Text>
-            <Text style={styles.summaryValue}>
-              {entry.totalWorkHours > 0 ? formatHoursToDisplay(entry.totalWorkHours) : '-'}
-            </Text>
-          </Text>
+          <Text style={styles.summaryLabel}>{`총 근무시간: ${entry.totalWorkHours > 0 ? formatHoursToDisplay(entry.totalWorkHours) : '-'}`}</Text>
         </View>
         <View style={styles.summaryItem}>
-          <Text>
-            <Text style={styles.summaryLabel}>병가: </Text>
-            <Text style={styles.summaryValue}>{entry.sickDays}일</Text>
-          </Text>
+          <Text style={styles.summaryLabel}>{`병가: ${entry.sickDays}일`}</Text>
         </View>
         <View style={styles.summaryItem}>
-          <Text>
-            <Text style={styles.summaryLabel}>연차: </Text>
-            <Text style={styles.summaryValue}>{entry.annualDays}일</Text>
-          </Text>
+          <Text style={styles.summaryLabel}>{`연차: ${entry.annualDays}일`}</Text>
         </View>
         <View style={styles.summaryItem}>
-          <Text>
-            <Text style={styles.summaryLabel}>무급: </Text>
-            <Text style={styles.summaryValue}>{entry.unpaidDays}일</Text>
-          </Text>
+          <Text style={styles.summaryLabel}>{`무급: ${entry.unpaidDays}일`}</Text>
         </View>
       </View>
     </View>
