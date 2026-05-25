@@ -38,12 +38,13 @@ export async function GET(req: NextRequest) {
   }
 
   // 기간 내 전체 기록을 userId+status 기준으로 그룹 집계
+  // WorkRecord.date는 UTC Z 기준으로 저장되므로 Z 기준 필터 사용
   const grouped = await prisma.workRecord.groupBy({
     by: ['userId', 'status'],
     where: {
       date: {
-        gte: new Date(`${startDate}T00:00:00+09:00`),
-        lte: new Date(`${endDate}T23:59:59+09:00`),
+        gte: new Date(`${startDate}T00:00:00Z`),
+        lte: new Date(`${endDate}T23:59:59Z`),
       },
       userId: { in: users.map((u) => u.id) },
     },

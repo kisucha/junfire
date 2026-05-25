@@ -164,3 +164,14 @@ export interface GenerateReportInput {
   endDate: string            // YYYY-MM-DD
   includeInactive: boolean   // 비활성화 직원 포함 여부
 }
+
+// 도면 게시판 DTO — API 응답 시 사용
+export interface DrawingDTO {
+  id: string
+  siteName: string    // 현장명
+  floor: string       // 층
+  fileName: string    // 원본 파일명 (표시용)
+  fileSize: number    // 파일 크기 (bytes)
+  createdBy: string   // 등록 관리자 ID
+  createdAt: string   // ISO 8601 문자열
+}

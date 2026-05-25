@@ -8,6 +8,7 @@ interface StatusSelectorProps {
   value: RecordStatus             // 현재 선택된 상태
   onChange: (status: RecordStatus) => void  // 상태 변경 핸들러
   disabled?: boolean              // 비활성화 여부
+  hideHoliday?: boolean           // true면 HOLIDAY 옵션 숨김 (직원용)
 }
 
 // 상태별 선택 시 강조 스타일
@@ -27,16 +28,22 @@ const STATUS_ORDER: RecordStatus[] = ['WORK', 'SICK', 'ANNUAL', 'UNPAID', 'HOLID
 
 /**
  * 업무 상태 선택 컴포넌트
- * - 4가지 상태를 버튼 형태의 라디오 그룹으로 표시
+ * - 상태를 버튼 형태의 라디오 그룹으로 표시
  * - 선택된 상태는 색상 강조
+ * - hideHoliday=true 시 HOLIDAY 옵션 숨김 (직원용)
  */
-export default function StatusSelector({ value, onChange, disabled = false }: StatusSelectorProps) {
+export default function StatusSelector({ value, onChange, disabled = false, hideHoliday = false }: StatusSelectorProps) {
+  // hideHoliday가 true이면 HOLIDAY 제외
+  const visibleStatuses = hideHoliday
+    ? STATUS_ORDER.filter((s) => s !== 'HOLIDAY')
+    : STATUS_ORDER
+
   return (
     <fieldset>
       <legend className="text-sm font-medium text-gray-700 mb-2">업무 상태</legend>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {STATUS_ORDER.map((status) => {
+        {visibleStatuses.map((status) => {
           const isSelected = value === status
 
           return (

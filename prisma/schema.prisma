@@ -100,6 +100,24 @@ model WorkLocation {
   @@index([isActive])
 }
 
+// 도면 게시판 테이블 — 관리자가 등록한 현장별 도면 PDF 보관
+// 직원·관리자 모두 열람 가능, 업로드·삭제는 관리자 전용
+model Drawing {
+  id        String   @id @default(cuid())
+  siteName  String                    // 현장명
+  floor     String                    // 층 (예: "1층", "지하 1층")
+  fileName  String                    // 원본 업로드 파일명 (표시용)
+  filePath  String                    // 저장 파일명 (uploads/drawings/ 내 파일명)
+  fileSize  Int                       // 파일 크기 (bytes)
+  createdBy String                    // 등록 관리자 ID
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 현장명·등록일 기준 조회 최적화 인덱스
+  @@index([siteName])
+  @@index([createdAt])
+}
+
 // 공휴일 테이블 (전 직원 공통 적용, WorkRecord와 분리)
 // 관리자가 등록한 공휴일은 달력에서 Holiday 상태로 표시
 // WorkRecord와 별도 테이블로 분리하여 공휴일 일괄 적용/삭제 단순화

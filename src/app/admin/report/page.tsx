@@ -1,15 +1,17 @@
 // src/app/admin/report/page.tsx
-// 목적: 보고서 페이지 — 기간 선택 + PDF 다운로드
+// 목적: 보고서 페이지 — 기간 선택 + 직원별 집계 미리보기 + PDF 다운로드
 'use client'
 
 import { useState } from 'react'
 import DateRangePicker from '@/components/admin/DateRangePicker'
+import SummaryTable from '@/components/admin/SummaryTable'
+import DailyGrid from '@/components/admin/DailyGrid'
 import Button from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 
 /**
  * 보고서 페이지
- * - 기간 선택 (DateRangePicker)
+ * - 기간 선택 (DateRangePicker) + 조회 버튼 → 직원별 집계 미리보기 표시 [이슈 #2 수정]
  * - 비활성화 직원 포함 여부 체크박스
  * - PDF 다운로드 버튼 → POST /api/admin/report → Blob 다운로드
  */
@@ -29,6 +31,23 @@ export default function ReportPage() {
   const [includeInactive, setIncludeInactive] = useState(false)
   const [dateError, setDateError] = useState('')
   const [isDownloading, setIsDownloading] = useState(false)
+
+  // [이슈 #2] 조회 트리거 — 0일 때는 테이블 미표시
+  const [searchTrigger, setSearchTrigger] = useState(0)
+
+  // 날짜 유효성 검증 후 조회 트리거 증가
+  function handleSearch() {
+    if (!startDate || !endDate) {
+      setDateError('시작일과 종료일을 모두 선택해주세요.')
+      return
+    }
+    if (startDate > endDate) {
+      setDateError('시작일은 종료일보다 이전이어야 합니다.')
+      return
+    }
+    setDateError('')
+    setSearchTrigger((prev) => prev + 1)
+  }
 
   // PDF 다운로드 처리
   async function handleDownload() {
@@ -80,14 +99,14 @@ export default function ReportPage() {
       {/* 페이지 제목 */}
       <div>
         <h1 className="text-xl font-bold text-gray-800">보고서</h1>
-        <p className="text-sm text-gray-500 mt-1">기간별 업무 기록 PDF 보고서를 생성합니다.</p>
+        <p className="text-sm text-gray-500 mt-1">기간을 선택하고 조회 후 PDF를 다운로드합니다.</p>
       </div>
 
       {/* 설정 카드 */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">보고서 설정</h2>
+        <h2 className="text-sm font-semibold text-gray-700 mb-4">기간 선택</h2>
 
-        {/* 기간 선택 */}
+        {/* 기간 선택 + 조회 버튼 */}
         <div className="mb-5">
           <DateRangePicker
             startDate={startDate}
@@ -100,14 +119,14 @@ export default function ReportPage() {
               setEndDate(d)
               if (dateError) setDateError('')
             }}
-            onSearch={() => {}}   // 보고서 페이지는 별도 다운로드 버튼 사용
+            onSearch={handleSearch}
             isLoading={isDownloading}
             error={dateError}
           />
         </div>
 
         {/* 비활성화 직원 포함 체크박스 */}
-        <div className="flex items-center gap-2 mb-6">
+        <div className="flex items-center gap-2">
           <input
             type="checkbox"
             id="includeInactive"
@@ -120,33 +139,71 @@ export default function ReportPage() {
             비활성화된 직원도 포함
           </label>
         </div>
-
-        {/* PDF 다운로드 버튼 */}
-        <Button
-          variant="primary"
-          onClick={handleDownload}
-          isLoading={isDownloading}
-          className="gap-2"
-        >
-          PDF 다운로드
-        </Button>
-
-        {isDownloading && (
-          <p className="text-xs text-gray-500 mt-2">
-            PDF를 생성 중입니다. 잠시 기다려주세요...
-          </p>
-        )}
       </div>
 
-      {/* 사용 안내 */}
-      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-        <h3 className="text-sm font-medium text-blue-800 mb-2">보고서 안내</h3>
-        <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
-          <li>선택한 기간의 모든 활성 직원 업무 기록이 포함됩니다.</li>
-          <li>정상근무, 병가, 연차, 무급 상태가 모두 포함됩니다.</li>
-          <li>PDF 파일로 다운로드되며 인쇄에 최적화되어 있습니다.</li>
-        </ul>
-      </div>
+      {/* [이슈 #2] 조회 결과 섹션 — 조회 후 표시 */}
+      {searchTrigger > 0 && (
+        <>
+          {/* 직원별 집계 섹션 */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-700">
+                직원별 집계 ({startDate} ~ {endDate})
+              </h2>
+
+              {/* PDF 다운로드 버튼 */}
+              <Button
+                variant="primary"
+                onClick={handleDownload}
+                isLoading={isDownloading}
+                className="gap-2"
+              >
+                PDF 다운로드
+              </Button>
+            </div>
+
+            {/* 직원별 집계 테이블 */}
+            <SummaryTable
+              startDate={startDate}
+              endDate={endDate}
+              includeInactive={includeInactive}
+              searchTrigger={searchTrigger}
+            />
+          </div>
+
+          {/* 날짜별 상세 섹션 */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">
+              날짜별 상세 기록 ({startDate} ~ {endDate})
+            </h2>
+            <DailyGrid
+              startDate={startDate}
+              endDate={endDate}
+              includeInactive={includeInactive}
+              searchTrigger={searchTrigger}
+            />
+          </div>
+
+          {isDownloading && (
+            <p className="text-xs text-gray-500">
+              PDF를 생성 중입니다. 잠시 기다려주세요...
+            </p>
+          )}
+        </>
+      )}
+
+      {/* 조회 전 안내 메시지 */}
+      {searchTrigger === 0 && (
+        <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+          <h3 className="text-sm font-medium text-blue-800 mb-2">보고서 안내</h3>
+          <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
+            <li>기간을 선택하고 조회 버튼을 클릭하면 직원별 집계를 확인할 수 있습니다.</li>
+            <li>집계 확인 후 PDF 다운로드 버튼으로 보고서를 생성합니다.</li>
+            <li>정상근무, 병가, 연차, 무급 상태가 모두 포함됩니다.</li>
+            <li>PDF 파일로 다운로드되며 인쇄에 최적화되어 있습니다.</li>
+          </ul>
+        </div>
+      )}
     </div>
   )
 }

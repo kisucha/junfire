@@ -99,6 +99,23 @@ export async function PUT(
     )
   }
 
+  // status 검증 — HOLIDAY는 관리자만 설정 가능
+  const validStatuses = ['WORK', 'SICK', 'ANNUAL', 'UNPAID', 'HOLIDAY']
+  if (status && !validStatuses.includes(status)) {
+    return NextResponse.json(
+      { success: false, error: '올바른 근무 상태를 입력해주세요.' },
+      { status: 400 }
+    )
+  }
+
+  // HOLIDAY 상태는 ADMIN만 설정 가능
+  if (status === 'HOLIDAY' && session.user.role !== 'ADMIN') {
+    return NextResponse.json(
+      { success: false, error: '공휴일은 관리자만 설정할 수 있습니다.' },
+      { status: 403 }
+    )
+  }
+
   // [M-003] WORK 미래 날짜 차단 — KST 기준 오늘 날짜와 비교
   if (status === 'WORK' && date && date > getTodayKST()) {
     return NextResponse.json(
@@ -123,7 +140,7 @@ export async function PUT(
     }
   }
 
-  // totalHours 재계산 — WORK 상태에서 시간 정보가 제공된 경우에만 수행
+  // totalHours 재계산 — 상태별로 다르게 처리
   let totalHours: number | null = null
   let startDateTime: Date | null = null
   let endDateTime: Date | null = null
@@ -147,7 +164,14 @@ export async function PUT(
     // [C-001] toUTCDateTime 사용 — setHours 미사용 (UTC 서버 환경 안전)
     startDateTime = toUTCDateTime(targetDate, startTime)
     endDateTime = toUTCDateTime(targetDate, endTime, isNightShift)
+  } else if (status && ['SICK', 'ANNUAL', 'HOLIDAY'].includes(status)) {
+    // 병가/연차/공휴일 — 07:00~15:00 자동 8시간 처리
+    const targetDate = date ?? record.date.toISOString().slice(0, 10)
+    startDateTime = new Date(`${targetDate}T07:00:00Z`)
+    endDateTime = new Date(`${targetDate}T15:00:00Z`)
+    totalHours = 8
   }
+  // UNPAID: startTime/endTime/totalHours 모두 null 유지
 
   try {
     const updated = await prisma.workRecord.update({
@@ -162,7 +186,7 @@ export async function PUT(
         // location: WORK 상태에서만 설정, 그 외 상태로 변경 시 null로 초기화
         ...(location !== undefined
           ? { location: status === 'WORK' ? location : null }
-          : {}),
+          : status && status !== 'WORK' ? { location: null } : {}),
         ...(description !== undefined ? { description: description ?? null } : {}),
         updatedBy: session.user.id, // 마지막 수정자 ID 기록 (관리자 대리 수정 추적용)
       },

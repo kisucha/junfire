@@ -43,8 +43,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '잘못된 날짜입니다.' }, { status: 400 })
   }
 
-  // status 필수 검증
-  const validStatuses = ['WORK', 'SICK', 'ANNUAL', 'UNPAID']
+  // status 필수 검증 — 관리자 API이므로 HOLIDAY 제한 없음
+  const validStatuses = ['WORK', 'SICK', 'ANNUAL', 'UNPAID', 'HOLIDAY']
   if (!status || !validStatuses.includes(status)) {
     return NextResponse.json({ error: '올바른 근무 상태를 입력해주세요.' }, { status: 400 })
   }
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // totalHours 서버 계산 및 시간 변환 — WORK 상태에서만 수행
+  // totalHours 서버 계산 및 시간 변환 — 상태별로 다르게 처리
   let totalHours: number | null = null
   let startDateTime: Date | null = null
   let endDateTime: Date | null = null
@@ -93,7 +93,13 @@ export async function POST(req: NextRequest) {
     // [C-001] toUTCDateTime 사용 — setHours 미사용 (UTC 서버 환경 안전)
     startDateTime = toUTCDateTime(date, startTime)
     endDateTime = toUTCDateTime(date, endTime, isNightShift)
+  } else if (['SICK', 'ANNUAL', 'HOLIDAY'].includes(status)) {
+    // 병가/연차/공휴일 — 07:00~15:00 자동 8시간 처리
+    startDateTime = new Date(`${date}T07:00:00Z`)
+    endDateTime = new Date(`${date}T15:00:00Z`)
+    totalHours = 8
   }
+  // UNPAID: startTime/endTime/totalHours 모두 null 유지
 
   try {
     // [NF-001] upsert: 기존 기록 있으면 UPDATE, 없으면 INSERT

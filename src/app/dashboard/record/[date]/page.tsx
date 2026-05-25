@@ -68,9 +68,9 @@ export default function RecordPage() {
     fetchRecord()
   }, [date, isValidDate, showToast])
 
-  // 저장/수정/삭제 성공 콜백 — 대시보드로 이동
+  // 저장/수정/삭제 성공 콜백 — 업무 기록 달력으로 이동
   function handleSuccess() {
-    router.push('/dashboard')
+    router.push('/dashboard/work')
   }
 
   // 잘못된 날짜 형식
@@ -91,7 +91,7 @@ export default function RecordPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push('/dashboard/work')}
             aria-label="달력으로 돌아가기"
           >
             ← 달력

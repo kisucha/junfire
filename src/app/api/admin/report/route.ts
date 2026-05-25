@@ -3,6 +3,11 @@
 // - POST: startDate~endDate 범위 WorkRecord + Holiday 조회 후 PDF 생성 → Buffer 반환
 // - [C-004] generateReportFromDB 사용 — Prisma Date 객체를 DTO 문자열로 변환 후 PDF 생성
 //          직접 generateReportPDF에 Prisma 결과를 전달하면 date 필드 타입 불일치 오류 발생
+// [FIX-003] Node.js 런타임 명시 — @react-pdf/renderer는 fs 의존, Edge 런타임 불가
+// [FIX-003] PDF 생성 타임아웃 60초 — 대용량 보고서 대비
+
+export const runtime = 'nodejs'
+export const maxDuration = 60
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'

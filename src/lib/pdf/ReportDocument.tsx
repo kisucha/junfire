@@ -3,6 +3,7 @@
 // Noto Sans KR 한글 폰트 내장 (TTF 파일 임베드) — 서버사이드 전용, 클라이언트 import 금지
 
 import React from 'react'
+import fs from 'fs'
 import {
   Document,
   Page,
@@ -15,15 +16,22 @@ import path from 'path'
 import { RoleLabel, StatusLabel } from '@/types'
 import { formatHoursToDisplay } from '@/lib/utils/time'
 import { getDayOfWeekKo } from '@/lib/utils/date'
+import { formatInTimeZone } from 'date-fns-tz'
 import type { WorkRecordDTO, Role } from '@/types'
 import type { UserReportEntry } from './generateReport'
 
 // ===== 폰트 등록 (한글 깨짐 방지) =====
-// [M-007] standalone 빌드 시 public 폴더가 .next/standalone/public 으로 복사 필수
-// process.cwd()는 서버 실행 기준 — standalone 환경에서는 .next/standalone 디렉토리
+// [FIX-003] data URI 방식으로 변경 — 파일 경로 파싱 오류 방지 (Windows 백슬래시, Edge Runtime 등)
+// Buffer를 base64 인코딩하여 @react-pdf/renderer에 직접 주입 → 경로 의존성 제거
+function loadFontDataUri(): string {
+  const fontPath = path.join(process.cwd(), 'public', 'fonts', 'NotoSansKR-Regular.ttf')
+  const buffer = fs.readFileSync(fontPath)
+  return `data:font/truetype;base64,${buffer.toString('base64')}`
+}
+
 Font.register({
   family: 'NotoSansKR',
-  src: path.join(process.cwd(), 'public', 'fonts', 'NotoSansKR-Regular.ttf'),
+  src: loadFontDataUri(),
 })
 
 // ===== 상태 한국어 레이블 =====
@@ -234,39 +242,27 @@ interface DetailRow {
 // ===== 유틸 함수 =====
 
 /**
- * UTC ISO 8601 시각을 HH:mm 표시 형식으로 변환
+ * UTC ISO 8601 시각을 NZT(뉴질랜드 표준시) 기준 HH:mm 표시 형식으로 변환
  * @param isoStr ISO 8601 UTC 문자열
  * @returns "HH:mm" 형식
  */
 function formatTimeDisplay(isoStr: string | null): string {
   if (!isoStr) return '-'
   try {
-    const date = new Date(isoStr)
-    // KST = UTC + 9시간
-    const kstOffset = 9 * 60
-    const kstMin = date.getUTCHours() * 60 + date.getUTCMinutes() + kstOffset
-    const h = Math.floor(kstMin / 60) % 24
-    const m = kstMin % 60
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+    return formatInTimeZone(new Date(isoStr), 'Pacific/Auckland', 'HH:mm')
   } catch {
     return '-'
   }
 }
 
 /**
- * 생성 일시 ISO 문자열을 "YYYY년 MM월 DD일" 형식으로 변환
+ * 생성 일시 ISO 문자열을 NZT(뉴질랜드 표준시) 기준 "YYYY년 MM월 DD일" 형식으로 변환
  * @param isoStr ISO 8601 문자열
  * @returns "YYYY년 MM월 DD일" 형식
  */
 function formatGeneratedAt(isoStr: string): string {
   try {
-    const date = new Date(isoStr)
-    const kstOffset = 9 * 60 * 60 * 1000
-    const kst = new Date(date.getTime() + kstOffset)
-    const y = kst.getUTCFullYear()
-    const m = String(kst.getUTCMonth() + 1).padStart(2, '0')
-    const d = String(kst.getUTCDate()).padStart(2, '0')
-    return `${y}년 ${m}월 ${d}일`
+    return formatInTimeZone(new Date(isoStr), 'Pacific/Auckland', 'yyyy년 MM월 dd일')
   } catch {
     return isoStr.slice(0, 10)
   }

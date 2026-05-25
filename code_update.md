@@ -2,6 +2,80 @@
 
 ---
 
+## 2026-05-25
+
+### 이슈 #1 진단 결과
+- 근무시간 10:00-18:00 표시는 디스플레이 버그 아님 — 직원들이 실제로 10:00-18:00 입력함
+- 기존 데이터: 관리자 대리 입력(수정)으로 직접 정정 가능
+- 재발 방지: 이슈 #5(기본값)로 해결
+
+### 이슈 #2 수정 — 보고서 페이지 데이터 미리보기 추가
+- `src/app/admin/report/page.tsx` 재작성
+- DateRangePicker의 onSearch 연결 (기존 no-op → searchTrigger 증가)
+- 조회 후 SummaryTable(직원별 집계) 미리보기 표시
+- PDF 다운로드 버튼은 집계 확인 후 사용 가능
+
+### 이슈 #3 수정 — PDF 생성 에러 수정
+- `src/app/api/admin/report/route.ts`: `export const runtime = 'nodejs'` + `maxDuration = 60` 추가
+- `src/lib/pdf/ReportDocument.tsx`: 폰트 로딩 방식 파일 경로 → data URI 방식으로 변경
+  - `fs.readFileSync` + base64 변환 → Windows 경로 파싱 오류 및 Edge Runtime 의존성 제거
+
+### 이슈 #4 완료 — 관리자 계정 추가 (jun / 1234)
+- `prisma/seed-jun.ts` 생성 후 실행 완료
+- DB에 jun(준 관리자, ADMIN 역할, isFirstLogin=false) 계정 생성됨
+
+### 이슈 #5 완료 — 기본 근무 시간 07:00/15:00 설정
+- `src/components/record/RecordForm.tsx`
+- 신규 기록 입력 시 startTime 기본값 `''` → `'07:00'`
+- 신규 기록 입력 시 endTime 기본값 `''` → `'15:00'`
+- 기존 기록 수정 시 기존 값 그대로 유지
+
+### 세션2 — 6대 이슈 일괄 수정 (2026-05-25)
+
+| 번호 | 파일 | 내용 |
+|------|------|------|
+| 직원 공휴일 제거 | StatusSelector.tsx, RecordForm.tsx | hideHoliday prop — 직원 폼에서 HOLIDAY 숨김, 관리자 대리입력 시만 표시 |
+| 보고서 크로스 테이블 | DailyGrid.tsx (신규), report/daily/route.ts (신규), report/page.tsx | 날짜×직원 근무시간 크로스 테이블 생성 |
+| KST 제거 | time.ts, RecordForm.tsx, ReportDocument.tsx | 시간 저장/표시 KST 변환 제거 — 입력값 그대로 UTC |
+| 게시판 메뉴 | dashboard/page.tsx | 헤더 탭 네비게이션 "업무 기록" / "도면 게시판" 분리 |
+| 보고서 조회 | summary/route.ts | 날짜 필터 +09:00 → Z 수정 |
+| 자동 시간 | records/route.ts, records/[id]/route.ts, override/route.ts | SICK/ANNUAL/HOLIDAY → 07:00~15:00 자동 8시간 처리 |
+
+타입체크 0오류, next build 성공.
+
+---
+
+### 이슈 #6 완료 — 도면 게시판 신규 기능
+**DB 스키마**
+- `prisma/schema.prisma`: Drawing 모델 추가 (siteName, floor, fileName, filePath, fileSize, createdBy, createdAt)
+- `prisma/migrations/20260525035735_add_drawing_model/` 마이그레이션 적용 완료
+
+**API 라우트**
+- `src/app/api/admin/drawings/route.ts`: POST 파일 업로드 (관리자 전용, multipart/form-data)
+- `src/app/api/admin/drawings/[id]/route.ts`: DELETE 삭제 (관리자 전용)
+- `src/app/api/drawings/route.ts`: GET 목록 조회 (인증 사용자 모두)
+- `src/app/api/drawings/[id]/file/route.ts`: GET PDF 스트리밍 (inline 표시)
+
+**파일 저장**
+- 위치: `{cwd}/uploads/drawings/{uuid}.pdf`
+- `uploads/` 디렉토리 `.gitignore` 추가
+
+**페이지**
+- `src/app/drawings/layout.tsx`: 공용 레이아웃 (인증 필수)
+- `src/app/drawings/DrawingsNav.tsx`: 역할별 네비게이션 헤더
+- `src/app/drawings/page.tsx`: 목록 (현장명 검색, 행 클릭 → 뷰어)
+- `src/app/drawings/[id]/page.tsx`: PDF 뷰어 (iframe inline)
+- `src/app/admin/drawings/page.tsx`: 관리자 관리 페이지 (업로드/삭제)
+
+**네비게이션**
+- `src/app/admin/AdminNav.tsx`: "도면" 메뉴 추가 → /admin/drawings
+- `src/app/dashboard/page.tsx`: "도면" 버튼 추가 → /drawings
+
+**타입**
+- `src/types/index.ts`: DrawingDTO 추가
+
+---
+
 ## 2026-05-18
 
 ### CLAUDE.md 생성 (V1 → V2)
@@ -222,3 +296,39 @@
 - `http://localhost:9955` 정상 응답
 - 로그인 페이지, 세션 API 200 확인
 - TypeScript 타입 오류 0개
+
+---
+
+## 2026-05-25 (2차)
+
+### 관리자 보고서 페이지 — 날짜별 상세 테이블 추가
+
+#### 신규 API 라우트
+- `src/app/api/admin/report/daily/route.ts` — GET 엔드포인트
+  - 쿼리: startDate(YYYY-MM-DD), endDate(YYYY-MM-DD), includeInactive(boolean)
+  - ADMIN 권한 검증
+  - 반환 구조: employees(가나다순) + days(날짜 순서, 크로스 테이블 데이터)
+  - 근무시간 계산: WORK=실제값(소수점1자리), SICK/ANNUAL/HOLIDAY=8, UNPAID=0
+  - 공휴일 Map 매칭 및 holiday.name 포함
+
+#### 신규 컴포넌트
+- `src/components/admin/DailyGrid.tsx` — 날짜×직원 크로스 테이블
+  - Props: startDate, endDate, includeInactive, searchTrigger
+  - searchTrigger 트리거 시 API 호출
+  - 테이블 구조: 날짜(슬래시 포맷) | 직원들(정수/소수점1자리) | 비고
+  - 비고 생성 로직: 공휴일명 > 토/일 요일 > SICK/ANNUAL/UNPAID 직원명
+  - 행 스타일: 토요일(bg-blue-50) / 일요일(bg-red-50) / 공휴일(bg-yellow-50) / 홀수짝수교대
+  - 합계 행: 직원별 총 근무시간 (bg-gray-100 강조)
+  - 로딩/데이터없음 상태 처리
+
+#### 기존 페이지 수정
+- `src/app/admin/report/page.tsx`
+  - DailyGrid import 추가
+  - 직원별 집계 섹션 제목 변경 ("미리보기" 제거)
+  - 날짜별 상세 기록 섹션 신규 추가 (Fragment 구조)
+  - searchTrigger > 0 시 두 섹션 모두 표시
+  - PDF 생성 로딩 메시지 위치 조정
+
+#### 타입 검증
+- TypeScript 타입 에러 0개 (신규 작성 파일 기준)
+- LoadingSpinner import 문법 수정 (named → default export)

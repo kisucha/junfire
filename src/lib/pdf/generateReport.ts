@@ -143,9 +143,9 @@ export async function generateReportPDF(
 export async function generateReportFromDB(input: GenerateReportInput): Promise<Buffer> {
   const { startDate, endDate, includeInactive } = input
 
-  // KST 기준 날짜 범위 → UTC 변환 (+09:00 오프셋 명시)
-  const startDateTime = new Date(`${startDate}T00:00:00+09:00`)
-  const endDateTime = new Date(`${endDate}T23:59:59+09:00`)
+  // UTC 기준 날짜 범위 (WorkRecord.date는 YYYY-MM-DDT00:00:00Z 형식으로 저장됨)
+  const startDateTime = new Date(`${startDate}T00:00:00Z`)
+  const endDateTime = new Date(`${endDate}T23:59:59Z`)
 
   // 1. 기간 내 전직원 업무 기록 전체 조회 (PDF는 페이징 없이 전체 로드)
   const rawRecords = await prisma.workRecord.findMany({

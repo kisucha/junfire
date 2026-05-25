@@ -22,3 +22,6 @@ logs/
 # OS 파일
 .DS_Store
 Thumbs.db
+
+# 업로드된 도면 파일 (서버 로컬 저장, git 미포함)
+uploads/

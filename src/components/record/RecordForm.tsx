@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
+import { formatInTimeZone } from 'date-fns-tz'
 
 interface RecordFormProps {
   date: string                      // YYYY-MM-DD — 기록할 날짜
@@ -42,16 +43,10 @@ interface FormValues {
   description: string
 }
 
-// UTC ISO 문자열에서 HH:mm 추출 (KST 변환 없이 단순 substring — 서버에서 KST 기준 저장됨)
+// UTC ISO 문자열에서 NZT(뉴질랜드 표준시) 기준 HH:mm 추출
 function extractTimeFromISO(isoStr: string | null): string {
   if (!isoStr) return ''
-  // ISO 8601: "2026-05-18T09:00:00.000Z" → 시:분은 UTC 기준이므로 KST(+9) 보정
-  const date = new Date(isoStr)
-  const hours = String(date.getUTCHours()).padStart(2, '0')
-  const minutes = String(date.getUTCMinutes()).padStart(2, '0')
-  // KST = UTC + 9 → UTC 시간 + 9시간
-  const kstHours = (date.getUTCHours() + 9) % 24
-  return `${String(kstHours).padStart(2, '0')}:${minutes}`
+  return formatInTimeZone(new Date(isoStr), 'Pacific/Auckland', 'HH:mm')
 }
 
 /**
@@ -73,12 +68,14 @@ export default function RecordForm({
   // 활성 현장 목록 (체크박스 옵션)
   const [locationOptions, setLocationOptions] = useState<LocationOption[]>([])
 
-  // 폼 상태 초기화 — 기존 기록이 있으면 기존 값으로 채움
+  // 폼 상태 초기화 — 기존 기록이 있으면 기존 값으로 채움, 신규 입력 시 기본값 07:00/15:00 적용
   // location 문자열 → ", " 구분 배열로 파싱
   const [values, setValues] = useState<FormValues>({
     status: existingRecord?.status ?? 'WORK',
-    startTime: extractTimeFromISO(existingRecord?.startTime ?? null),
-    endTime: extractTimeFromISO(existingRecord?.endTime ?? null),
+    // 기존 기록: ISO 문자열 → NZT HH:mm 변환 / 신규: 기본값 07:00 (실제 근무 시작 시각)
+    startTime: existingRecord ? extractTimeFromISO(existingRecord.startTime) : '07:00',
+    // 기존 기록: ISO 문자열 → NZT HH:mm 변환 / 신규: 기본값 15:00 (실제 근무 종료 시각)
+    endTime: existingRecord ? extractTimeFromISO(existingRecord.endTime) : '15:00',
     locations: existingRecord?.location
       ? existingRecord.location.split(', ').map((s) => s.trim()).filter(Boolean)
       : [],
@@ -268,6 +265,7 @@ export default function RecordForm({
         value={values.status}
         onChange={(s) => handleChange('status', s)}
         disabled={isSaving || isDeleting}
+        hideHoliday={!targetUserId}
       />
 
       {/* WORK 상태일 때만 추가 필드 표시 */}

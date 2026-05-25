@@ -16,6 +16,7 @@ const navItems = [
   { href: '/admin', label: '대시보드', exact: true },
   { href: '/admin/staff', label: '직원 관리', exact: false },
   { href: '/admin/report', label: '보고서', exact: false },
+  { href: '/admin/drawings', label: '도면', exact: false },
 ]
 
 /**

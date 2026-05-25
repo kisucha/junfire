@@ -81,12 +81,20 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // status 필수 검증
-  const validStatuses = ['WORK', 'SICK', 'ANNUAL', 'UNPAID']
+  // status 필수 검증 — HOLIDAY는 관리자만 설정 가능
+  const validStatuses = ['WORK', 'SICK', 'ANNUAL', 'UNPAID', 'HOLIDAY']
   if (!status || !validStatuses.includes(status)) {
     return NextResponse.json(
       { success: false, error: '올바른 근무 상태를 입력해주세요.' },
       { status: 400 }
+    )
+  }
+
+  // HOLIDAY 상태는 ADMIN만 설정 가능
+  if (status === 'HOLIDAY' && session.user.role !== 'ADMIN') {
+    return NextResponse.json(
+      { success: false, error: '공휴일은 관리자만 설정할 수 있습니다.' },
+      { status: 403 }
     )
   }
 
@@ -115,7 +123,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // totalHours 서버 계산 및 시간 변환 — WORK 상태에서만 수행
+  // totalHours 서버 계산 및 시간 변환 — 상태별로 다르게 처리
   let totalHours: number | null = null
   let startDateTime: Date | null = null
   let endDateTime: Date | null = null
@@ -137,7 +145,13 @@ export async function POST(req: NextRequest) {
     // [C-001] toUTCDateTime 사용 — setHours 미사용 (UTC 서버 환경 안전)
     startDateTime = toUTCDateTime(date, startTime)
     endDateTime = toUTCDateTime(date, endTime, isNightShift)
+  } else if (['SICK', 'ANNUAL', 'HOLIDAY'].includes(status)) {
+    // 병가/연차/공휴일 — 07:00~15:00 자동 8시간 처리
+    startDateTime = new Date(`${date}T07:00:00Z`)
+    endDateTime = new Date(`${date}T15:00:00Z`)
+    totalHours = 8
   }
+  // UNPAID: startTime/endTime/totalHours 모두 null 유지
 
   try {
     const record = await prisma.workRecord.create({
