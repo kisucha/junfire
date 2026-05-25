@@ -60,21 +60,50 @@ export default function DrawingViewerPage() {
   return (
     <div className="space-y-4">
       {/* 헤더 영역 */}
-      <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push('/drawings')}
-        >
-          ← 목록
-        </Button>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push('/drawings')}
+          >
+            ← 목록
+          </Button>
 
+          {drawing && (
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold text-gray-800 truncate">
+                {drawing.siteName} — {drawing.floor}
+              </h1>
+              <p className="text-xs text-gray-500 truncate">{drawing.fileName}</p>
+            </div>
+          )}
+        </div>
+
+        {/* 다운로드 버튼 — 모바일/데스크탑 공통 */}
         {drawing && (
-          <div>
-            <h1 className="text-lg font-bold text-gray-800">
-              {drawing.siteName} — {drawing.floor}
-            </h1>
-            <p className="text-xs text-gray-500">{drawing.fileName}</p>
+          <div className="flex gap-2 flex-shrink-0">
+            {/* 새 탭에서 열기 — iOS Safari 등에서 PDF 직접 열기 */}
+            <a
+              href={`/api/drawings/${id}/file`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center px-3 py-1.5 text-xs font-medium
+                text-blue-700 bg-blue-50 border border-blue-200 rounded-md
+                hover:bg-blue-100 transition-colors"
+            >
+              새 탭
+            </a>
+            {/* 강제 다운로드 — ?download=true → Content-Disposition: attachment */}
+            <a
+              href={`/api/drawings/${id}/file?download=true`}
+              download={drawing.fileName}
+              className="inline-flex items-center px-3 py-1.5 text-xs font-medium
+                text-white bg-blue-600 border border-blue-600 rounded-md
+                hover:bg-blue-700 transition-colors"
+            >
+              다운로드
+            </a>
           </div>
         )}
       </div>

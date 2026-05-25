@@ -12,6 +12,8 @@ import fs from 'fs'
 import path from 'path'
 
 // GET: PDF 파일 스트리밍 (인증 필수)
+// 쿼리 파라미터: ?download=true → Content-Disposition: attachment (강제 다운로드)
+//               (기본값)         → Content-Disposition: inline  (브라우저 뷰어)
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -23,6 +25,9 @@ export async function GET(
   }
 
   const { id } = await params
+
+  // ?download=true 쿼리 파라미터 확인 — 모바일 다운로드 지원
+  const isDownload = req.nextUrl.searchParams.get('download') === 'true'
 
   // DB에서 도면 메타데이터 조회
   const drawing = await prisma.drawing.findUnique({
@@ -44,14 +49,18 @@ export async function GET(
   // 파일 읽기 + 응답 반환
   const fileBuffer = fs.readFileSync(filePath)
 
-  // 원본 파일명을 Content-Disposition에 포함 (브라우저 다운로드/뷰어용)
+  // 원본 파일명 URL 인코딩 (한글 파일명 대응)
   const encodedFileName = encodeURIComponent(drawing.fileName)
+
+  // isDownload=true → attachment(강제 다운로드), false → inline(브라우저 뷰어)
+  const disposition = isDownload
+    ? `attachment; filename*=UTF-8''${encodedFileName}`
+    : `inline; filename*=UTF-8''${encodedFileName}`
 
   return new NextResponse(new Uint8Array(fileBuffer), {
     headers: {
       'Content-Type': 'application/pdf',
-      // inline: 브라우저 내장 PDF 뷰어로 표시 (attachment이면 다운로드)
-      'Content-Disposition': `inline; filename*=UTF-8''${encodedFileName}`,
+      'Content-Disposition': disposition,
       'Content-Length': fileBuffer.length.toString(),
       // 캐시 설정: 1시간 브라우저 캐시 (도면은 자주 바뀌지 않음)
       'Cache-Control': 'private, max-age=3600',
