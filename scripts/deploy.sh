@@ -32,12 +32,21 @@ echo "[4/6] Next.js 빌드..."
 npm run build
 
 # 5. standalone 정적 파일 복사
-echo "[5/6] 정적 파일 복사..."
+echo "[5/7] 정적 파일 복사..."
 cp -r public .next/standalone/public
 cp -r .next/static .next/standalone/.next/static
 
-# 6. PM2 재시작 (무중단 -- update-env 적용)
-echo "[6/6] PM2 재시작..."
+# 6. uploads symlink 복구
+# Next.js standalone server.js가 내부적으로 process.chdir()로 .next/standalone으로 이동하므로
+# process.cwd() = .next/standalone이 됨 → 업로드 파일이 .next/standalone/uploads에 저장됨
+# 빌드 시 .next/standalone이 재생성되므로 매 배포마다 symlink 재생성 필요
+echo "[6/7] uploads symlink 복구..."
+mkdir -p "$APP_DIR/uploads/drawings"
+rm -f .next/standalone/uploads
+ln -s "$APP_DIR/uploads" .next/standalone/uploads
+
+# 7. PM2 재시작 (무중단 -- update-env 적용)
+echo "[7/7] PM2 재시작..."
 pm2 startOrRestart ecosystem.config.js --update-env
 
 echo ""
@@ -45,4 +54,5 @@ echo "======================================"
 echo " 배포 완료! $(date '+%Y-%m-%d %H:%M:%S')"
 echo " 상태 확인: pm2 status"
 echo " 로그 확인: pm2 logs junfire --lines 50"
+echo " 업로드 경로: $APP_DIR/uploads/drawings"
 echo "======================================"
