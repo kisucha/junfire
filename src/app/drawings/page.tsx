@@ -75,6 +75,7 @@ export default function DrawingsPage() {
   const [editSiteNameOther, setEditSiteNameOther] = useState('')
   const [editFloor, setEditFloor] = useState('')
   const [editType, setEditType] = useState<DrawingType>('1st')
+  const [editFile, setEditFile] = useState<File | null>(null)  // 파일 교체용 (선택)
   const [isSaving, setIsSaving] = useState(false)
 
   // 삭제 확인 모달
@@ -169,6 +170,7 @@ export default function DrawingsPage() {
     }
     setEditFloor(drawing.floor)
     setEditType((drawing.type as DrawingType) ?? '1st')
+    setEditFile(null)  // 파일 교체 초기화
   }
 
   // 수정 모달 현장명 드롭다운 변경
@@ -201,7 +203,7 @@ export default function DrawingsPage() {
     }
   }
 
-  // 수정 저장 처리
+  // 수정 저장 처리 — multipart/form-data (파일 교체 포함)
   async function handleEditSave() {
     if (!editTarget) return
     const finalSiteName = editSiteNameMode === 'other' ? editSiteNameOther.trim() : editSiteName.trim()
@@ -210,15 +212,22 @@ export default function DrawingsPage() {
 
     setIsSaving(true)
     try {
+      const formData = new FormData()
+      formData.append('siteName', finalSiteName)
+      formData.append('floor', editFloor.trim())
+      formData.append('type', editType)
+      // 파일이 선택된 경우만 전송 — 없으면 API에서 기존 파일 유지
+      if (editFile) formData.append('file', editFile)
+
       const res = await fetch(`/api/drawings/${editTarget.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ siteName: finalSiteName, floor: editFloor.trim(), type: editType }),
+        body: formData,
       })
       const json = await res.json()
       if (!res.ok || !json.success) { showToast(json.error ?? '수정에 실패했습니다.', 'error'); return }
       showToast('수정되었습니다.', 'success')
       setEditTarget(null)
+      setEditFile(null)
       await fetchDrawings()
     } catch {
       showToast('네트워크 오류가 발생했습니다.', 'error')
@@ -338,8 +347,13 @@ export default function DrawingsPage() {
     )
   })
 
-  // 수정/삭제 버튼 표시 여부 — 본인 등록 도면 또는 ADMIN
-  function canModify(drawing: DrawingDTO): boolean {
+  // 수정 버튼 표시 여부 — 로그인 사용자 누구나 가능
+  function canEdit(): boolean {
+    return !!currentUserId
+  }
+
+  // 삭제 버튼 표시 여부 — 본인 등록 도면 또는 ADMIN
+  function canDelete(drawing: DrawingDTO): boolean {
     return isAdmin || drawing.createdBy === currentUserId
   }
 
@@ -588,9 +602,9 @@ export default function DrawingsPage() {
                     >
                       {formatDate(drawing.createdAt)}
                     </td>
-                    {/* 수정 버튼 — 본인 또는 ADMIN만 표시 */}
+                    {/* 수정 버튼 — 로그인 사용자 누구나 */}
                     <td className="px-5 py-4 text-center">
-                      {canModify(drawing) ? (
+                      {canEdit() ? (
                         <Button
                           variant="secondary"
                           size="sm"
@@ -605,9 +619,9 @@ export default function DrawingsPage() {
                         <span className="text-gray-300 text-xs">-</span>
                       )}
                     </td>
-                    {/* 삭제 버튼 — 본인 또는 ADMIN만 표시 */}
+                    {/* 삭제 버튼 — 본인 등록 또는 ADMIN만 */}
                     <td className="px-5 py-4 text-center">
-                      {canModify(drawing) ? (
+                      {canDelete(drawing) ? (
                         <Button
                           variant="danger"
                           size="sm"
@@ -723,6 +737,43 @@ export default function DrawingsPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* 파일 교체 (선택) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                파일 교체 <span className="text-gray-400 font-normal">(선택 — 비워두면 기존 파일 유지)</span>
+              </label>
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                disabled={isSaving}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null
+                  if (f && f.type !== 'application/pdf') {
+                    showToast('PDF 파일만 선택할 수 있습니다.', 'error')
+                    e.target.value = ''
+                    setEditFile(null)
+                    return
+                  }
+                  setEditFile(f)
+                }}
+                className="block w-full text-sm text-gray-600
+                  file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0
+                  file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700
+                  hover:file:bg-blue-100 cursor-pointer
+                  disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+              {editFile && (
+                <p className="text-xs text-blue-600 mt-1">
+                  교체할 파일: {editFile.name} ({formatFileSize(editFile.size)})
+                </p>
+              )}
+              {editTarget && !editFile && (
+                <p className="text-xs text-gray-400 mt-1">
+                  현재 파일: {editTarget.fileName}
+                </p>
+              )}
             </div>
 
             {/* 버튼 */}
