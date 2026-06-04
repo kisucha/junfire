@@ -48,6 +48,7 @@ export default function EmployeeReportPage() {
   const [endDate, setEndDate] = useState(defaultEnd)
   const [dateError, setDateError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isPdfLoading, setIsPdfLoading] = useState(false)
   const [searched, setSearched] = useState(false)
   const [records, setRecords] = useState<WorkRecordDTO[]>([])
   const [totalHoursSum, setTotalHoursSum] = useState(0)
@@ -82,6 +83,32 @@ export default function EmployeeReportPage() {
       showToast('네트워크 오류가 발생했습니다.', 'error')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  // PDF 다운로드 — 조회 결과를 서버에서 PDF로 생성하여 파일 저장
+  async function handlePdfDownload() {
+    setIsPdfLoading(true)
+    try {
+      const res = await fetch(
+        `/api/records/my-report/pdf?startDate=${startDate}&endDate=${endDate}`
+      )
+      if (!res.ok) {
+        showToast('PDF 생성에 실패했습니다.', 'error')
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const name = session?.user?.name ?? 'unknown'
+      a.download = `JunFire_업무기록_${name}_${startDate}_${endDate}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      showToast('PDF 다운로드 중 오류가 발생했습니다.', 'error')
+    } finally {
+      setIsPdfLoading(false)
     }
   }
 
@@ -173,10 +200,20 @@ export default function EmployeeReportPage() {
         {/* 조회 결과 */}
         {searched && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-700">
                 조회 결과 ({startDate} ~ {endDate})
               </h2>
+              {records.length > 0 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handlePdfDownload}
+                  isLoading={isPdfLoading}
+                >
+                  PDF 다운로드
+                </Button>
+              )}
             </div>
 
             {records.length === 0 ? (

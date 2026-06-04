@@ -2,6 +2,28 @@
 
 ---
 
+## 2026-06-04 (2차)
+
+### 직원 업무내용 PDF 다운로드 기능 추가
+
+**변경 파일**
+
+| 파일 | 구분 | 내용 |
+|------|------|------|
+| `src/lib/pdf/generateEmployeeReport.tsx` | 신규 | 직원 개인 업무내용 확인서 PDF 문서 컴포넌트 + 렌더링 함수 |
+| `src/app/api/records/my-report/pdf/route.ts` | 신규 | GET PDF 다운로드 API (인증 필수, Node.js runtime) |
+| `src/app/dashboard/report/page.tsx` | 수정 | PDF 다운로드 버튼 추가 (조회 결과 헤더 우측) |
+
+**기능 요약**
+- 조회 결과가 1건 이상일 때 "PDF 다운로드" 버튼 표시
+- PDF 레이아웃: 헤더(회사명·직원명·기간·출력일) + 테이블(날짜/상태/근무시간/업무현장/업무내용) + 합계 행
+- 파일명: `JunFire_업무기록_{이름}_{startDate}_{endDate}.pdf`
+- Noto Sans KR 한글 폰트 내장
+
+**타입체크:** 오류 없음 ✅
+
+---
+
 ## 2026-06-04
 
 ### 업무내용 제공 메뉴 신규 추가 + 직원 공휴일 상태 허용
