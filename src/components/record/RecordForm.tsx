@@ -265,7 +265,7 @@ export default function RecordForm({
         value={values.status}
         onChange={(s) => handleChange('status', s)}
         disabled={isSaving || isDeleting}
-        hideHoliday={!targetUserId}
+        hideHoliday={false}
       />
 
       {/* WORK 상태일 때만 추가 필드 표시 */}

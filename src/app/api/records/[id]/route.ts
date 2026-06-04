@@ -108,14 +108,6 @@ export async function PUT(
     )
   }
 
-  // HOLIDAY 상태는 ADMIN만 설정 가능
-  if (status === 'HOLIDAY' && session.user.role !== 'ADMIN') {
-    return NextResponse.json(
-      { success: false, error: '공휴일은 관리자만 설정할 수 있습니다.' },
-      { status: 403 }
-    )
-  }
-
   // [M-003] WORK 미래 날짜 차단 — KST 기준 오늘 날짜와 비교
   if (status === 'WORK' && date && date > getTodayKST()) {
     return NextResponse.json(

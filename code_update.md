@@ -2,6 +2,30 @@
 
 ---
 
+## 2026-06-04
+
+### 업무내용 제공 메뉴 신규 추가 + 직원 공휴일 상태 허용
+
+**변경 파일**
+
+| 파일 | 구분 | 내용 |
+|------|------|------|
+| `src/app/api/records/my-report/route.ts` | 신규 | GET 기간별 본인 기록 조회 API + totalHoursSum 집계 |
+| `src/app/dashboard/report/page.tsx` | 신규 | 업무내용 제공 페이지 (기간 선택 + 결과 테이블 + 합계 행) |
+| `src/app/dashboard/page.tsx` | 수정 | 메뉴 카드 2개 → 3개 (업무내용 제공 추가, 3열 그리드) |
+| `src/components/record/RecordForm.tsx` | 수정 | `hideHoliday={!targetUserId}` → `hideHoliday={false}` (직원도 공휴일 선택 가능) |
+| `src/app/api/records/route.ts` | 수정 | HOLIDAY ADMIN 전용 체크 제거 |
+| `src/app/api/records/[id]/route.ts` | 수정 | HOLIDAY ADMIN 전용 체크 제거 |
+
+**기능 요약**
+- `/dashboard/report`: 기간 선택 → 날짜/업무상태/근무시간/업무현장/업무내용 테이블 + 총 근무시간 합계
+- 집계 규칙: WORK=실제 totalHours, SICK/ANNUAL/HOLIDAY=8시간 고정, UNPAID=0시간(제외)
+- 직원도 공휴일 상태 기록 가능 (기존에는 ADMIN만 가능)
+
+**타입체크:** 오류 없음 ✅
+
+---
+
 ## 2026-05-25
 
 ### 이슈 #1 진단 결과

@@ -50,8 +50,8 @@ export default function DashboardLandingPage() {
           <p className="text-gray-500 mt-2">메뉴를 선택해주세요.</p>
         </div>
 
-        {/* 선택 카드 2개 */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        {/* 선택 카드 3개 */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {/* 업무 기록 카드 */}
           <button
             onClick={() => router.push('/dashboard/work')}
@@ -65,6 +65,22 @@ export default function DashboardLandingPage() {
             </h2>
             <p className="text-sm text-gray-500">
               근무 시간 및 업무 내용을 기록합니다.
+            </p>
+          </button>
+
+          {/* 업무내용 제공 카드 */}
+          <button
+            onClick={() => router.push('/dashboard/report')}
+            className="group bg-white rounded-2xl shadow-sm border border-gray-200
+              hover:border-green-400 hover:shadow-md transition-all duration-150
+              p-8 text-left"
+          >
+            <div className="text-4xl mb-4">📊</div>
+            <h2 className="text-lg font-bold text-gray-800 group-hover:text-green-700 mb-1">
+              업무내용 제공
+            </h2>
+            <p className="text-sm text-gray-500">
+              기간별 업무 내역 및 근무시간을 조회합니다.
             </p>
           </button>
 
