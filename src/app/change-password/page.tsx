@@ -59,8 +59,8 @@ export default function ChangePasswordPage() {
 
     if (!newPassword) {
       newErrors.newPassword = '새 비밀번호를 입력해주세요.'
-    } else if (newPassword.length < 8) {
-      newErrors.newPassword = '새 비밀번호는 8자 이상이어야 합니다.'
+    } else if (newPassword.length < 4) {
+      newErrors.newPassword = '새 비밀번호는 4자 이상이어야 합니다.'
     }
 
     if (!confirmPassword) {
@@ -144,7 +144,7 @@ export default function ChangePasswordPage() {
             <Input
               label="새 비밀번호"
               type="password"
-              placeholder="8자 이상의 새 비밀번호"
+              placeholder="4자 이상의 새 비밀번호"
               value={newPassword}
               onChange={(e) => {
                 setNewPassword(e.target.value)

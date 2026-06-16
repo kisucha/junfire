@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { UserDTO } from '@/types'
 import Button from '@/components/ui/Button'
+import Input from '@/components/ui/Input'
 import LoadingSpinner from '@/components/ui/LoadingSpinner'
 import Modal from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
@@ -37,6 +38,13 @@ export default function StaffTable({ onRegisterClick, refreshTrigger = 0 }: Staf
   // 비활성화 확인 모달 상태
   const [toggleTarget, setToggleTarget] = useState<UserDTO | null>(null)
   const [isToggling, setIsToggling] = useState(false)
+
+  // 비밀번호 리셋 모달 상태
+  const [resetTarget, setResetTarget] = useState<UserDTO | null>(null)
+  const [tempPassword, setTempPassword] = useState('')
+  const [isResetting, setIsResetting] = useState(false)
+  // 리셋 완료 후 임시 비밀번호 표시용
+  const [resetDonePassword, setResetDonePassword] = useState<string | null>(null)
 
   // 목록 로드 함수 — cursor가 null이면 처음부터 로드
   const loadStaff = useCallback(async (cursor: string | null, isFirst: boolean) => {
@@ -105,6 +113,41 @@ export default function StaffTable({ onRegisterClick, refreshTrigger = 0 }: Staf
     }
   }
 
+  // 비밀번호 리셋 처리
+  async function handleResetPassword() {
+    if (!resetTarget) return
+    if (!tempPassword || tempPassword.length < 4) return
+
+    setIsResetting(true)
+    try {
+      const res = await fetch(`/api/admin/staff/${resetTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset-password', tempPassword }),
+      })
+      const json = await res.json()
+
+      if (!res.ok || !json.success) {
+        showToast(json.error ?? '비밀번호 초기화에 실패했습니다.', 'error')
+        return
+      }
+
+      // 성공 — 임시 비밀번호 표시 상태로 전환
+      setResetDonePassword(json.tempPassword)
+    } catch {
+      showToast('네트워크 오류가 발생했습니다.', 'error')
+    } finally {
+      setIsResetting(false)
+    }
+  }
+
+  // 비밀번호 리셋 모달 닫기 + 상태 초기화
+  function closeResetModal() {
+    setResetTarget(null)
+    setTempPassword('')
+    setResetDonePassword(null)
+  }
+
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
@@ -169,13 +212,26 @@ export default function StaffTable({ onRegisterClick, refreshTrigger = 0 }: Staf
                     {new Date(user.createdAt).toLocaleDateString('ko-KR')}
                   </td>
                   <td className="px-4 py-3">
-                    <Button
-                      variant={user.isActive ? 'danger' : 'secondary'}
-                      size="sm"
-                      onClick={() => setToggleTarget(user)}
-                    >
-                      {user.isActive ? '비활성화' : '재활성화'}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant={user.isActive ? 'danger' : 'secondary'}
+                        size="sm"
+                        onClick={() => setToggleTarget(user)}
+                      >
+                        {user.isActive ? '비활성화' : '재활성화'}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setResetTarget(user)
+                          setTempPassword('')
+                          setResetDonePassword(null)
+                        }}
+                      >
+                        비밀번호 초기화
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -194,6 +250,72 @@ export default function StaffTable({ onRegisterClick, refreshTrigger = 0 }: Staf
           >
             더 보기
           </Button>
+        </div>
+      )}
+
+      {/* 비밀번호 초기화 모달 */}
+      {resetTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+          role="dialog"
+          aria-modal="true"
+          onClick={closeResetModal}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {resetDonePassword ? (
+              // 초기화 완료 — 임시 비밀번호 표시
+              <>
+                <h2 className="text-lg font-semibold text-gray-900 mb-2">초기화 완료</h2>
+                <p className="text-sm text-gray-600 mb-3">
+                  <span className="font-medium">{resetTarget.name}</span> 직원의 임시 비밀번호:
+                </p>
+                <div className="bg-gray-100 rounded-md px-4 py-3 text-center font-mono text-lg font-bold text-gray-800 mb-4 select-all">
+                  {resetDonePassword}
+                </div>
+                <p className="text-xs text-gray-400 mb-4">
+                  직원에게 이 비밀번호를 전달하세요. 다음 로그인 시 반드시 변경해야 합니다.
+                </p>
+                <div className="flex justify-end">
+                  <Button variant="primary" size="sm" onClick={closeResetModal}>
+                    확인
+                  </Button>
+                </div>
+              </>
+            ) : (
+              // 임시 비밀번호 입력 폼
+              <>
+                <h2 className="text-lg font-semibold text-gray-900 mb-2">비밀번호 초기화</h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  <span className="font-medium">{resetTarget.name}</span> 직원의 임시 비밀번호를 설정합니다.
+                </p>
+                <Input
+                  label="임시 비밀번호 (4자 이상)"
+                  type="text"
+                  placeholder="임시 비밀번호 입력"
+                  value={tempPassword}
+                  onChange={(e) => setTempPassword(e.target.value)}
+                  disabled={isResetting}
+                />
+                <div className="flex justify-end gap-3 mt-4">
+                  <Button variant="secondary" size="sm" onClick={closeResetModal} disabled={isResetting}>
+                    취소
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleResetPassword}
+                    isLoading={isResetting}
+                    disabled={tempPassword.length < 4}
+                  >
+                    초기화
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
 
