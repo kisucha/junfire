@@ -42,12 +42,7 @@ cp -r .next/static .next/standalone/.next/static
 # 빌드 시 .next/standalone이 재생성되므로 매 배포마다 symlink 재생성 필요
 echo "[6/7] uploads symlink 복구..."
 mkdir -p "$APP_DIR/uploads/drawings"
-# symlink이면 unlink, 일반 디렉토리이면 rm -rf로 제거 후 symlink 재생성
-if [ -L .next/standalone/uploads ]; then
-  unlink .next/standalone/uploads
-elif [ -d .next/standalone/uploads ]; then
-  rm -rf .next/standalone/uploads
-fi
+rm -rf .next/standalone/uploads || true
 ln -s "$APP_DIR/uploads" .next/standalone/uploads
 
 # 7. PM2 재시작 (무중단 -- update-env 적용)
